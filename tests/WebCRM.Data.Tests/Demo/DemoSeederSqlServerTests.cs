@@ -316,11 +316,18 @@ public class DemoSeederSqlServerTests : IClassFixture<SqlServerFixture>
         await EnsureBaseDataAsync();
         await using (var db = _sql.CreateContext())
         {
-            if (!await db.LostReasons.AnyAsync(r => r.Name == "Price", Ct))
+            // Whatever ran before in this shared database, "Price" must exist as the developer's own value with its own order.
+            var price = await db.LostReasons.FirstOrDefaultAsync(r => r.Name == "Price", Ct);
+            if (price is null)
             {
                 db.LostReasons.Add(new LostReason { Name = "Price", SortOrder = 5 });
-                await db.SaveChangesAsync(Ct);
             }
+            else
+            {
+                price.SortOrder = 5;
+            }
+
+            await db.SaveChangesAsync(Ct);
         }
 
         await Seeder.SeedAsync(Small, Password, _ => { }, Ct);
