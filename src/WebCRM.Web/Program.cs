@@ -6,6 +6,7 @@ using WebCRM.Core.Entities;
 using WebCRM.Core.Interfaces;
 using WebCRM.Data;
 using WebCRM.Data.Interceptors;
+using WebCRM.Data.Seeding;
 using WebCRM.Web.Components;
 using WebCRM.Web.Components.Account;
 using WebCRM.Web.Services;
@@ -59,6 +60,8 @@ builder.Services.AddIdentityCore<User>(options =>
         options.SignIn.RequireConfirmedAccount = false;
         options.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
 
+        options.Password.RequiredLength = 12;
+
         // P1: lock out for 15 minutes after 5 failed attempts.
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
@@ -72,6 +75,10 @@ builder.Services.AddIdentityCore<User>(options =>
 builder.Services.AddSingleton<IEmailSender<User>, IdentityNoOpEmailSender>();
 
 var app = builder.Build();
+
+// Idempotent seed (system user, roles, CompanySetting, first Admin). Runs on every start;
+// it needs the migrations to be applied already.
+await DatabaseSeeder.SeedAsync(app.Services, connectionString);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
