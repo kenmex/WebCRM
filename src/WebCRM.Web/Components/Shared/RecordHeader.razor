@@ -51,11 +51,13 @@
 </MudPaper>
 
 @* Leaving a dirty form (nav click, browser back, closing the tab) asks first. *@
-<NavigationLock ConfirmExternalNavigation="_dirty" OnBeforeInternalNavigation="OnBeforeNavigationAsync" />
+<NavigationLock ConfirmExternalNavigation="IsDirty" OnBeforeInternalNavigation="OnBeforeNavigationAsync" />
 
 @code {
     private EditContext? _subscribedTo;
-    private bool _dirty;
+    // Asked at the moment of navigation, never cached: the page marks the form clean and navigates in the
+    // same breath, before this component has a chance to render again.
+    private bool IsDirty => IsEditing && EditContext?.IsModified() == true;
 
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
 
@@ -105,13 +107,10 @@
                 _subscribedTo.OnFieldChanged += OnFieldChanged;
             }
         }
-
-        _dirty = IsEditing && EditContext?.IsModified() == true;
     }
 
     private void OnFieldChanged(object? sender, FieldChangedEventArgs e)
     {
-        _dirty = true;
         StateHasChanged();
     }
 
@@ -135,13 +134,14 @@
             return;
         }
 
-        if (_dirty && !await Dialogs.ConfirmAsync(
+        if (IsDirty && !await Dialogs.ConfirmAsync(
                 "Discard changes?", "You have unsaved changes. They will be lost.", "Discard", "Keep editing"))
         {
             return;
         }
 
-        _dirty = false;
+        // Discarded on purpose: mark clean so the page can navigate away without a second prompt.
+        EditContext?.MarkAsUnmodified();
         await OnCancel.InvokeAsync();
     }
 
@@ -155,7 +155,7 @@
 
     private async Task OnBeforeNavigationAsync(LocationChangingContext context)
     {
-        if (!_dirty || !IsEditing)
+        if (!IsDirty)
         {
             return;
         }
