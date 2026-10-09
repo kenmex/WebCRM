@@ -9,6 +9,15 @@ Measured 2026-10-09 with `dotnet run --project src/WebCRM.DemoData -- measure` o
 
 Result: **50 of 70 scenarios are within budget, 20 are over.** Everything in the Accounts and Contacts lists that does not use the quick-filter box is fast: default views, every typed filter, deep pages and almost every sort are at or under about 210 ms, most under 100 ms.
 
+## Decision (2026-10-09): the search fix is parked
+
+Target clients are mostly outside Greece and typically have a few thousand contacts, not 50,000, so the budgets are met at the sizes that matter and the fix waits.
+
+- **Where it starts to miss.** Search and the quick-filter box exceed their budgets above **roughly 20,000 contacts**. The scans are linear in the number of rows, so from the 50,000-row measurements below that works out at about 12,000 to 15,000 contacts for the contact quick filter (300 ms budget) and about 30,000 to 40,000 for global search (1 s budget). These are extrapolations, not measurements. To check one, run `seed --scale 0.4` (about 20,000 contacts) and then `measure`.
+- **The planned fix:** a **persisted computed search key** on Accounts and Contacts. Try a `PERSISTED` column that folds the text inside SQL Server first (lower case, `TRANSLATE` for the accents, final sigma ς to σ, binary collation), so the database keeps it up to date with no service code. If SQL Server will not persist or index that expression, or the folding cannot be proven equal to the Greek accent-insensitive collation, fall back to a column the services maintain on save (and back-fill in the migration). Either way: data dictionary first, a migration, and a test that the folding agrees with `Greek_100_CI_AI` over the whole Greek alphabet. **Estimated effort: half a day.**
+- **Last activity sorts** (and the Owner sort, marginal): `LastActivityAt` stored on the record, maintained when an activity is logged or completed. It comes with **Phase 4**, when activities are built.
+- Re-run `measure` after either change and update this file.
+
 ## Over budget
 
 | Group | Scenario | Rows | p95 ms | Budget ms |
@@ -48,7 +57,7 @@ A contact search runs those six predicates twice (once to count, once to fetch t
 
 An index does not help. A composite `(ContactId, DoneAt)` index for the Last activity sorts was tested on a temporary copy and made no difference (292 ms with the existing `ContactId` index, 323 ms with the composite): the sort has to compute a maximum for every one of the 50,000 rows.
 
-## Options (none applied yet)
+## Options (none applied yet; see the decision above)
 
 1. **A pre-folded search key column** on Accounts and Contacts (lower case, accents removed, final sigma folded, binary collation), kept up to date by the services on save, searched with one binary `LIKE`. About 30 to 40 ms per scan at this volume. Needs a migration with a back-fill, a data-dictionary change, and a test that the C# folding agrees with the database collation across the Greek alphabet. Keeps substring matching.
 2. **One query for count and page** (`COUNT(*) OVER()`). Measured 328 ms elapsed here because SQL Server went parallel (1.7 s of CPU). It would not help on a host with few cores.

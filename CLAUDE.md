@@ -22,7 +22,8 @@ Per the Architecture section of `docs/rev2-plan.md`, using `WebCRM.*` names:
 - `src/WebCRM.Web`: Blazor app, Program.cs, components, API endpoints
 - `src/WebCRM.Core`: entities, services (business rules), validation, interfaces
 - `src/WebCRM.Data`: DbContext, entity configurations, migrations, interceptors, seed data
-- `tests/WebCRM.Core.Tests` (xUnit + Shouldly), later `tests/WebCRM.Web.Tests` (bUnit) and `tests/WebCRM.E2E` (Playwright)
+- `src/WebCRM.DemoData`: developer-only console tool (`seed`, `wipe`, `measure`) that fills a local database with demo data; never referenced by the web app, never deployed (see `docs/adr/0004-demo-data.md`)
+- `tests/WebCRM.Core.Tests` (xUnit + Shouldly), `tests/WebCRM.Data.Tests` (services on EF InMemory plus SQL Server integration tests on a throwaway database, and the demo data tool), `tests/WebCRM.Web.Tests` (bUnit), later `tests/WebCRM.E2E` (Playwright)
 
 ## Hosting
 - Target: MonsterASP (staging and demo). Keep the app deployable there: no features that require a paid tier or a dedicated server.
