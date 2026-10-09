@@ -12,10 +12,13 @@ public static class VatNumberRules
     public const string GreekPrefix = "EL";
 
     public const string InvalidMessage =
-        "Enter a VAT number as a 2-letter country code followed by 2 to 12 letters or digits, e.g. EL123456789 or DE123456789.";
+        "Enter a VAT number as a 2-letter country code followed by 2 to 12 letters or digits, e.g. EL094259216 or DE123456789.";
 
     public const string InvalidGreekMessage =
-        "Greek VAT numbers (EL) have exactly 9 digits, e.g. EL123456789 or just 123456789.";
+        "Greek VAT numbers (EL) have exactly 9 digits, e.g. EL094259216 or just 094259216.";
+
+    public const string InvalidGreekCheckDigitMessage =
+        "This Greek VAT number (ΑΦΜ) is not valid: its check digit does not match. Please check the number.";
 
     // "ΕΛ" typed on a Greek keyboard: capital Greek Epsilon and Lambda, which look like E and L.
     private const string GreekLettersPrefix = "ΕΛ";
@@ -57,6 +60,28 @@ public static class VatNumberRules
         return value.Length == 9 && value.All(char.IsAsciiDigit) ? GreekPrefix + value : value;
     }
 
+    /// <summary>
+    /// Check digit of a Greek ΑΦΜ (9 digits). The first 8 digits are weighted 256, 128, ... 2; the sum modulo 11,
+    /// modulo 10, must equal the 9th digit. 000000000 passes the arithmetic but is not a real number.
+    /// </summary>
+    public static bool IsValidGreekAfm(string nineDigits)
+    {
+        if (nineDigits.Length != 9 || !nineDigits.All(char.IsAsciiDigit) || nineDigits == "000000000")
+        {
+            return false;
+        }
+
+        var sum = 0;
+        var weight = 256;
+        for (var i = 0; i < 8; i++)
+        {
+            sum += (nineDigits[i] - '0') * weight;
+            weight /= 2;
+        }
+
+        return sum % 11 % 10 == nineDigits[8] - '0';
+    }
+
     /// <summary>Null when the (already normalised) value is valid or empty, otherwise the message to show.</summary>
     public static string? Validate(string? normalized)
     {
@@ -67,7 +92,12 @@ public static class VatNumberRules
 
         if (normalized.StartsWith(GreekPrefix, StringComparison.Ordinal))
         {
-            return normalized.Length == 11 && normalized.Skip(2).All(char.IsAsciiDigit) ? null : InvalidGreekMessage;
+            if (normalized.Length != 11 || !normalized.Skip(2).All(char.IsAsciiDigit))
+            {
+                return InvalidGreekMessage;
+            }
+
+            return IsValidGreekAfm(normalized[2..]) ? null : InvalidGreekCheckDigitMessage;
         }
 
         var valid = normalized.Length is >= 4 and <= 14

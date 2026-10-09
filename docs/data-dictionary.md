@@ -20,7 +20,7 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
 | Name | nvarchar(200) AI | no |  | Unique among active accounts; similar names warned |
-| VatNumber | nvarchar(20) | yes |  | Stored normalised: upper case, no spaces, dots or dashes. Format: 2-letter country prefix + 2 to 12 letters or digits; `EL` + exactly 9 digits for Greece. A bare 9-digit number is a Greek ΑΦΜ and is stored as `EL` + the digits; a Greek-letter `ΕΛ` prefix is stored as `EL`. Unique when filled, among active accounts (compared after normalising) |
+| VatNumber | nvarchar(20) | yes |  | Stored normalised: upper case, no spaces, dots or dashes. Format: 2-letter country prefix + 2 to 12 letters or digits; `EL` + exactly 9 digits for Greece, and the ΑΦΜ check digit must be correct (first 8 digits weighted 256 down to 2, sum mod 11 mod 10 = 9th digit; 000000000 is rejected). A bare 9-digit number is a Greek ΑΦΜ and is stored as `EL` + the digits; a Greek-letter `ΕΛ` prefix is stored as `EL`. Unique when filled, among active accounts (compared after normalising) |
 | IndustryId | int | yes |  | FK Industry |
 | AccountStatusId | int | no | first status | FK AccountStatus |
 | Phone | nvarchar(30) | yes |  |  |

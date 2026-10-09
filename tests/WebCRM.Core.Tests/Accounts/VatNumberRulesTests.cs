@@ -45,7 +45,7 @@ public class VatNumberRulesTests
     }
 
     [Theory]
-    [InlineData("EL123456789")]
+    [InlineData("EL094259216")]
     [InlineData("DE123456789")]
     [InlineData("FR12345678901")]
     [InlineData("BE0123456789")]
@@ -67,6 +67,41 @@ public class VatNumberRulesTests
         VatNumberRules.Validate(value).ShouldBe(VatNumberRules.InvalidGreekMessage);
 
     [Theory]
+    [InlineData("094259216")]
+    [InlineData("123456783")]
+    [InlineData("999999993")]
+    [InlineData("000000050")] // sum mod 11 is 10, so the check digit is 0
+    public void A_greek_AFM_with_the_right_check_digit_is_valid(string afm)
+    {
+        VatNumberRules.IsValidGreekAfm(afm).ShouldBeTrue();
+        VatNumberRules.Validate("EL" + afm).ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("123456789")] // check digit should be 3
+    [InlineData("094259217")] // one digit off
+    [InlineData("094259261")] // two digits swapped
+    [InlineData("099999990")] // check digit should be 9
+    [InlineData("998877665")] // check digit should be 6
+    [InlineData("000000000")] // passes the arithmetic, but is not a real number
+    [InlineData("12345678")]
+    [InlineData("1234567890")]
+    [InlineData("12345678A")]
+    public void A_greek_AFM_with_the_wrong_check_digit_or_shape_is_invalid(string afm) =>
+        VatNumberRules.IsValidGreekAfm(afm).ShouldBeFalse();
+
+    [Theory]
+    [InlineData("EL123456789")]
+    [InlineData("EL094259217")]
+    [InlineData("EL000000000")]
+    public void Validate_explains_a_failed_check_digit_for_greek_numbers(string value) =>
+        VatNumberRules.Validate(value).ShouldBe(VatNumberRules.InvalidGreekCheckDigitMessage);
+
+    [Fact]
+    public void Other_countries_are_not_checked_for_a_greek_check_digit() =>
+        VatNumberRules.Validate("DE123456789").ShouldBeNull();
+
+    [Theory]
     [InlineData("12345678")] // no country prefix
     [InlineData("1234567890")]
     [InlineData("D123456789")] // one-letter prefix
@@ -79,8 +114,9 @@ public class VatNumberRulesTests
         VatNumberRules.Validate(value).ShouldBe(VatNumberRules.InvalidMessage);
 
     [Theory]
-    [InlineData("el 123.456-789", true)]
-    [InlineData("123456789", true)]
+    [InlineData("el 094.259-216", true)]
+    [InlineData("094259216", true)]
+    [InlineData("123456789", false)] // right shape, wrong check digit
     [InlineData("", true)]
     [InlineData("12345", false)]
     [InlineData("EL12345", false)]

@@ -311,11 +311,11 @@ public class AccountServiceTests : IDisposable
     public async Task Save_blocks_a_duplicate_vat_number()
     {
         var first = Form("First");
-        first.VatNumber = "EL123456789";
+        first.VatNumber = "EL094259216";
         (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
 
         var second = Form("Second");
-        second.VatNumber = "123 456 789"; // the same number, written differently
+        second.VatNumber = "094 259 216"; // the same number, written differently
         var result = await _service.SaveAsync(second, _alice, cancellationToken: Ct);
 
         result.Status.ShouldBe(AccountSaveStatus.Invalid);
@@ -456,14 +456,14 @@ public class AccountServiceTests : IDisposable
     public async Task Save_normalises_the_vat_number_and_adds_https_to_the_website()
     {
         var model = Form("Acme");
-        model.VatNumber = "el 123.456-789";
+        model.VatNumber = "el 094.259-216";
         model.Website = "  mexdb.com/about ";
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
         result.Status.ShouldBe(AccountSaveStatus.Saved);
         var saved = await _service.GetAsync(result.Id, _alice, Ct);
-        saved!.VatNumber.ShouldBe("EL123456789");
+        saved!.VatNumber.ShouldBe("EL094259216");
         saved.Website.ShouldBe("https://mexdb.com/about");
     }
 
@@ -471,16 +471,17 @@ public class AccountServiceTests : IDisposable
     public async Task Save_stores_a_bare_9_digit_greek_afm_with_the_EL_prefix()
     {
         var model = Form("Acme");
-        model.VatNumber = "123456789";
+        model.VatNumber = "094259216";
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("EL123456789");
+        (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("EL094259216");
     }
 
     [Theory]
     [InlineData("12345", VatNumberRules.InvalidMessage)]
     [InlineData("EL12345", VatNumberRules.InvalidGreekMessage)]
+    [InlineData("123456789", VatNumberRules.InvalidGreekCheckDigitMessage)]
     [InlineData("DE 12 34 56 78 90 12 34", VatNumberRules.InvalidMessage)]
     public async Task Save_rejects_an_invalid_vat_number_with_a_clear_message_on_that_field(string vat, string message)
     {
