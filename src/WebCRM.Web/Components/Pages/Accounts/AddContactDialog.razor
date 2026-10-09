@@ -1,0 +1,113 @@
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Records
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+
+@* "Add contact" on the account page (US2): the same contact form as the Contact page, in a dialog, with the account
+   already filled in. The page behind it never navigates away. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_editor.Model is { } model)
+        {
+            <MudStack Spacing="3">
+                @if (_saveError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@_saveError</MudAlert>
+                }
+                <SaveWarningAlert Warning="_editor.Warning" OnAccept="SaveAnywayAsync" OnDismiss="_editor.DismissWarning" />
+                <EditForm EditContext="_editor.Context" OnSubmit="SaveAsync">
+                    <DataAnnotationsValidator />
+                    <ContactFormFields Model="model" IsNew="true" LockAccount="true" />
+                </EditForm>
+            </MudStack>
+        }
+        else if (_failed)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">Could not open the form. Please close this and try again.</MudAlert>
+        }
+        else
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" aria-busy="true" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_editor.IsSaving">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_editor.IsSaving || _editor.Model is null)">
+            @(_editor.IsSaving ? "Saving..." : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly RecordEditor<ContactEditModel> _editor = new();
+    private UserContext? _user;
+    private bool _failed;
+    private string? _saveError;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>The account the contact is added to; it is filled in and cannot be changed here.</summary>
+    [Parameter, EditorRequired] public int AccountId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _user = await UserContexts.GetAsync();
+            if (_user is null)
+            {
+                _failed = true;
+                return;
+            }
+
+            var model = await Contacts.NewAsync(_user, AccountId);
+
+            // An account the user cannot see comes back empty: there is nothing to add a contact to.
+            if (model.AccountId is null)
+            {
+                _failed = true;
+                return;
+            }
+
+            _editor.Begin(model);
+        }
+        catch (Exception)
+        {
+            _failed = true;
+        }
+    }
+
+    private Task SaveAsync() => SaveAsync(new SaveOptions());
+
+    private Task SaveAnywayAsync() => SaveAsync(new SaveOptions { AcceptWarnings = true });
+
+    private async Task SaveAsync(SaveOptions options)
+    {
+        if (_editor.IsSaving || _editor.Context is null || !_editor.Context.Validate())
+        {
+            return;
+        }
+
+        _saveError = null;
+        await _editor.SaveAsync(
+            save: o => Contacts.SaveAsync(_editor.Model!, _user!, o),
+            options: options,
+            onSaved: result =>
+            {
+                MudDialog.Close(DialogResult.Ok(result.Id));
+                return Task.CompletedTask;
+            },
+            onNotFound: () =>
+            {
+                MudDialog.Cancel();
+                return Task.CompletedTask;
+            },
+            onError: _ => _saveError = "Could not save the contact. Please try again.");
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

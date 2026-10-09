@@ -118,6 +118,12 @@ else
             }
         </EditContent>
     </RecordHeader>
+
+    @* Related records load when their tab is first opened. A new account has none yet: the tabs appear after the first save. *@
+    @if (_detail is not null)
+    {
+        <RecordTabs @key="_detail.Id" Tabs="_tabs" />
+    }
 }
 
 @code {
@@ -129,6 +135,7 @@ else
     private AccountDetail? _detail;
     private bool _loading = true;
     private List<BreadcrumbItem> _crumbs = [];
+    private IReadOnlyList<RecordTabItem> _tabs = [];
 
     /// <summary>Null on /accounts/new.</summary>
     [Parameter] public int? Id { get; set; }
@@ -170,6 +177,8 @@ else
             }
         }
 
+        _tabs = IsNew ? [] : BuildTabs(Id!.Value);
+
         _crumbs =
         [
             new BreadcrumbItem("Accounts", "accounts"),
@@ -177,6 +186,13 @@ else
         ];
         _loadedFor = key;
         _loading = false;
+    }
+
+    private static IReadOnlyList<RecordTabItem> BuildTabs(int accountId)
+    {
+        RenderFragment overview = @<AccountOverviewTab AccountId="accountId" />;
+        RenderFragment contacts = @<AccountContactsTab AccountId="accountId" />;
+        return [new RecordTabItem("Overview", overview), new RecordTabItem("Contacts", contacts)];
     }
 
     // ---- Edit mode ----

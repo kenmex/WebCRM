@@ -1,0 +1,37 @@
+@* An address as it reads on a letter. Shows a dash when there is nothing. *@
+
+@if (!HasAny)
+{
+    <MudText Color="Color.Secondary"><span aria-label="empty">&ndash;</span></MudText>
+}
+else
+{
+    <address class="mud-typography mud-typography-body1" style="font-style: normal;">
+        @if (!string.IsNullOrWhiteSpace(Street))
+        {
+            <div>@Street</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Postcode) || !string.IsNullOrWhiteSpace(City))
+        {
+            <div>@string.Join(" ", new[] { Postcode, City }.Where(s => !string.IsNullOrWhiteSpace(s)))</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(CountryCode))
+        {
+            <div>@CountryCode</div>
+        }
+    </address>
+}
+
+@code {
+    [Parameter] public string? Street { get; set; }
+
+    [Parameter] public string? City { get; set; }
+
+    [Parameter] public string? Postcode { get; set; }
+
+    [Parameter] public string? CountryCode { get; set; }
+
+    private bool HasAny =>
+        !string.IsNullOrWhiteSpace(Street) || !string.IsNullOrWhiteSpace(City)
+        || !string.IsNullOrWhiteSpace(Postcode) || !string.IsNullOrWhiteSpace(CountryCode);
+}

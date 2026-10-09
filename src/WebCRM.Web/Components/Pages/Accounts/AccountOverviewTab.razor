@@ -1,0 +1,212 @@
+@using WebCRM.Core.Accounts
+@using WebCRM.Core.Records
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IAccountAddressService Addresses
+@inject IUserContextProvider UserContexts
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+@* The Overview tab on the account page: billing and shipping address, edited in place. Addresses have no RowVersion,
+   so there is no conflict check: the last save wins. *@
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" aria-busy="true" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+        @_error
+        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="LoadAsync" Class="ml-2">Retry</MudButton>
+    </MudAlert>
+}
+else if (_addresses is not null)
+{
+    <MudPaper Outlined="true" Class="pa-4">
+        <MudStack Spacing="3">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6" HtmlTag="h2">Addresses</MudText>
+                @if (_editor.IsEditing)
+                {
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_editor.IsSaving" OnClick="SubmitAsync"
+                                   StartIcon="@Icons.Material.Filled.Save">@(_editor.IsSaving ? "Saving..." : "Save")</MudButton>
+                        <MudButton Variant="Variant.Text" Disabled="_editor.IsSaving" OnClick="CancelAsync">Cancel</MudButton>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="BeginEdit">Edit addresses</MudButton>
+                }
+            </MudStack>
+
+            @if (_editor.IsEditing && _editor.Model is { } model)
+            {
+                <EditForm EditContext="_editor.Context" OnSubmit="SubmitAsync">
+                    <DataAnnotationsValidator />
+                    <div @onkeydown="OnKeyDown">
+                        <MudGrid Spacing="4">
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle1" Class="mb-2">Billing address</MudText>
+                                <MudStack Spacing="2">
+                                    <MudTextField @bind-Value="model.BillingStreet" For="@(() => model.BillingStreet)" Label="Billing street"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200" AutoFocus="true" />
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudTextField @bind-Value="model.BillingCity" For="@(() => model.BillingCity)" Label="Billing city"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+                                        <MudTextField @bind-Value="model.BillingPostcode" For="@(() => model.BillingPostcode)" Label="Billing postcode"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" Style="max-width: 140px;" />
+                                    </MudStack>
+                                    <MudTextField @bind-Value="model.BillingCountryCode" For="@(() => model.BillingCountryCode)" Label="Billing country code"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="2" HelperText="2 letters, e.g. GR"
+                                                  Style="max-width: 200px;" />
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle1" Class="mb-2">Shipping address</MudText>
+                                <MudStack Spacing="2">
+                                    <MudTextField @bind-Value="model.ShippingStreet" For="@(() => model.ShippingStreet)" Label="Shipping street"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200" />
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudTextField @bind-Value="model.ShippingCity" For="@(() => model.ShippingCity)" Label="Shipping city"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+                                        <MudTextField @bind-Value="model.ShippingPostcode" For="@(() => model.ShippingPostcode)" Label="Shipping postcode"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" Style="max-width: 140px;" />
+                                    </MudStack>
+                                    <MudTextField @bind-Value="model.ShippingCountryCode" For="@(() => model.ShippingCountryCode)" Label="Shipping country code"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="2" HelperText="2 letters, e.g. GR"
+                                                  Style="max-width: 200px;" />
+                                </MudStack>
+                            </MudItem>
+                        </MudGrid>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <MudGrid Spacing="4">
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.subtitle1" Class="mb-1">Billing address</MudText>
+                        <AddressLines Street="@_addresses.BillingStreet" City="@_addresses.BillingCity"
+                                      Postcode="@_addresses.BillingPostcode" CountryCode="@_addresses.BillingCountryCode" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.subtitle1" Class="mb-1">Shipping address</MudText>
+                        <AddressLines Street="@_addresses.ShippingStreet" City="@_addresses.ShippingCity"
+                                      Postcode="@_addresses.ShippingPostcode" CountryCode="@_addresses.ShippingCountryCode" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudStack>
+    </MudPaper>
+}
+
+@* Leaving with unsaved address changes asks first, like the header card does. *@
+<NavigationLock ConfirmExternalNavigation="IsDirty" OnBeforeInternalNavigation="OnBeforeNavigationAsync" />
+
+@code {
+    private readonly RecordEditor<AccountAddressesEditModel> _editor = new();
+    private AccountAddressesEditModel? _addresses;
+    private UserContext? _user;
+    private bool _loading = true;
+    private string? _error;
+    private int _loadedFor;
+
+    [Parameter, EditorRequired] public int AccountId { get; set; }
+
+    // Asked at the moment of navigation, never cached (see RecordHeader).
+    private bool IsDirty => _editor.IsEditing && _editor.Context?.IsModified() == true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == AccountId)
+        {
+            return;
+        }
+
+        _loadedFor = AccountId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _user ??= await UserContexts.GetAsync();
+            _addresses = _user is null ? null : await Addresses.GetAsync(AccountId, _user);
+            if (_addresses is null && _user is not null)
+            {
+                _error = "Could not load the addresses.";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Could not load the addresses.";
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void BeginEdit() => _editor.Begin(_addresses!.Clone());
+
+    private async Task CancelAsync()
+    {
+        if (IsDirty && !await Dialogs.ConfirmAsync(
+                "Discard changes?", "You have unsaved changes to the addresses. They will be lost.", "Discard", "Keep editing"))
+        {
+            return;
+        }
+
+        _editor.MarkClean();
+        _editor.End();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CancelAsync();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_editor.IsSaving || _editor.Context is null || !_editor.Context.Validate())
+        {
+            return;
+        }
+
+        await _editor.SaveAsync(
+            save: _ => Addresses.SaveAsync(AccountId, _editor.Model!, _user!),
+            options: new SaveOptions(),
+            onSaved: async _ =>
+            {
+                Snackbar.Add("Addresses saved.", Severity.Success);
+                _editor.MarkClean();
+                _editor.End();
+                await LoadAsync();
+            },
+            onNotFound: () =>
+            {
+                Snackbar.Add("This account no longer exists.", Severity.Warning);
+                _editor.End();
+                return Task.CompletedTask;
+            },
+            onError: _ => Snackbar.Add("Could not save the addresses. Please try again.", Severity.Error));
+    }
+
+    private async Task OnBeforeNavigationAsync(LocationChangingContext context)
+    {
+        if (IsDirty && !await Dialogs.ConfirmAsync(
+                "Leave without saving?", "You have unsaved changes to the addresses. They will be lost.", "Leave", "Stay"))
+        {
+            context.PreventNavigation();
+        }
+    }
+}

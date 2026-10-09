@@ -1,0 +1,86 @@
+@using WebCRM.Core
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@* The Contacts tab on the account page (US2): the account's contacts, and Add contact in a dialog that is
+   pre-filled with this account. The page behind it never navigates away. *@
+
+<ChildPanel TDto="ContactListItem" Load="LoadAsync" Version="_version" RowHref="@(c => $"contacts/{c.Id}")"
+            AddText="Add contact" OnAdd="AddContactAsync" EmptyText="This account has no contacts yet.">
+    <Columns>
+        <TemplateColumn T="ContactListItem" Title="Name">
+            <CellTemplate><strong>@context.Item.FullName</strong></CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="ContactListItem" Title="Job title">
+            <CellTemplate>@context.Item.JobTitle</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="ContactListItem" Title="Email">
+            <CellTemplate>
+                @if (Links.MailtoUri(context.Item.Email) is { } mail)
+                {
+                    <a href="@mail" @onclick:stopPropagation="true">@context.Item.Email</a>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="ContactListItem" Title="Phone">
+            <CellTemplate>
+                @if ((string.IsNullOrWhiteSpace(context.Item.Phone) ? context.Item.Mobile : context.Item.Phone) is { } phone
+                    && Links.TelUri(phone) is { } tel)
+                {
+                    <a href="@tel" @onclick:stopPropagation="true">@phone</a>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="ContactListItem" Title="Owner">
+            <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <Card Context="c">
+        <MudStack Spacing="1">
+            <MudText Typo="Typo.subtitle1"><strong>@c.FullName</strong></MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@c.JobTitle</MudText>
+            <OwnerBadge Name="@c.OwnerName" IsActive="c.OwnerIsActive" />
+        </MudStack>
+    </Card>
+</ChildPanel>
+
+@code {
+    private UserContext? _user;
+    private int _version;
+
+    [Parameter, EditorRequired] public int AccountId { get; set; }
+
+    private async Task<PagedResult<ContactListItem>> LoadAsync(int page, CancellationToken cancellationToken)
+    {
+        _user ??= await UserContexts.GetAsync(cancellationToken);
+        if (_user is null)
+        {
+            return PagedResult<ContactListItem>.Empty;
+        }
+
+        // Every contact of this account that the user can see, whoever owns it.
+        return await Contacts.SearchAsync(
+            new ContactQuery(ListScope.All, AccountId: AccountId, Page: page), _user, cancellationToken);
+    }
+
+    private async Task AddContactAsync()
+    {
+        var parameters = new DialogParameters<AddContactDialog> { { x => x.AccountId, AccountId } };
+        var options = new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Medium, CloseOnEscapeKey = true };
+
+        var dialog = await Dialogs.ShowAsync<AddContactDialog>("Add contact", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Contact added.", Severity.Success);
+            _version++; // reloads the list from page one
+        }
+    }
+}

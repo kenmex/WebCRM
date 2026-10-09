@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using WebCRM.Core.Accounts;
+using WebCRM.Core.Contacts;
 using WebCRM.Core.Lookups;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Pages.Accounts;
@@ -20,6 +21,8 @@ public class AccountPageTests : MudTestContext
     private const string LeaveDialog = "Leave without saving?";
 
     private readonly FakeAccountService _accounts = new();
+    private readonly FakeContactService _contacts = new();
+    private readonly FakeAddressService _addresses = new();
     private readonly NavigationManager _navigation;
 
     public AccountPageTests()
@@ -29,12 +32,15 @@ public class AccountPageTests : MudTestContext
             new LookupOption(1, "Prospect", true), new LookupOption(2, "Active", true)));
         Services.AddSingleton<IOwnerService>(new FakeOwnerService(new OwnerOption("sales-1", "Sam Sales", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<IContactService>(_contacts);
+        Services.AddSingleton<IAccountAddressService>(_addresses);
         StartProviders();
 
         _navigation = Services.GetRequiredService<NavigationManager>();
         _accounts.Accounts[7] = new AccountDetail(
             7, "Acme", null, null, null, 1, "Prospect", null, null, "sales-1", "Sam Sales", true,
             new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), null, [1]);
+        _addresses.Addresses[7] = new AccountAddressesEditModel { BillingCity = "Athens" };
     }
 
     private string Path => new Uri(_navigation.Uri).AbsolutePath;
@@ -176,5 +182,33 @@ public class AccountPageTests : MudTestContext
         // Still dirty, so leaving still asks.
         cut.InvokeAsync(() => _navigation.NavigateTo("/accounts"));
         DialogProvider.WaitForAssertion(() => DialogProvider.Markup.ShouldContain(LeaveDialog));
+    }
+
+    // ---- Tabs (RecordTabs): Overview and Contacts, loaded when first opened ----
+
+    [Fact]
+    public void An_existing_account_shows_the_Overview_and_Contacts_tabs_and_loads_contacts_only_when_opened()
+    {
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.FindAll(".mud-tab").Select(t => t.TextContent.Trim()).ShouldBe(["Overview", "Contacts"]));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Athens")); // the Overview tab is open
+        _addresses.Gets.ShouldBe(1);
+        _contacts.Searches.ShouldBeEmpty(); // the Contacts tab has not been opened
+
+        cut.FindAll(".mud-tab").First(t => t.TextContent.Trim() == "Contacts").Click();
+
+        cut.WaitForAssertion(() => _contacts.Searches.Count.ShouldBe(1));
+        _contacts.Searches[0].AccountId.ShouldBe(7);
+    }
+
+    [Fact]
+    public void A_new_account_has_no_tabs_until_it_is_saved()
+    {
+        var cut = RenderNew();
+
+        cut.WaitForAssertion(() => cut.HasButton("Save").ShouldBeTrue());
+        cut.FindAll(".mud-tab").ShouldBeEmpty();
+        _addresses.Gets.ShouldBe(0);
     }
 }
