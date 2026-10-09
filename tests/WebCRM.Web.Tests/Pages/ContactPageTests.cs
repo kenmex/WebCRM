@@ -125,6 +125,22 @@ public class ContactPageTests : MudTestContext
     }
 
     [Fact]
+    public void A_new_contact_without_an_account_shows_an_empty_required_picker_and_will_not_save_without_one()
+    {
+        var cut = RenderNew();
+        cut.WaitForAssertion(() => cut.InputByLabel("Last name"));
+
+        cut.InputByLabel("Account").GetAttribute("value").ShouldBeNullOrEmpty();
+        cut.InputByLabel("Account").HasAttribute("required").ShouldBeTrue();
+
+        cut.InputByLabel("Last name").Change("Smith");
+        Press(cut, "Save");
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Choose an account."));
+        _contacts.Saves.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void A_new_contact_without_an_account_starts_with_the_current_user_as_owner()
     {
         var cut = RenderNew();
