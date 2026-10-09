@@ -1,0 +1,372 @@
+@page "/accounts/new"
+@page "/accounts/{Id:int}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Accounts
+@using WebCRM.Core.Lookups
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IAccountService Accounts
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="220px" />
+}
+else
+{
+    <MudBreadcrumbs Items="_crumbs" Class="px-0" />
+
+    <RecordHeader Title="@PageTitleText" EditContext="_editContext" IsEditing="_editing" Saving="_saving"
+                  OnEdit="BeginEdit" OnSave="SaveAsync" OnCancel="CancelAsync">
+        <StatusChip>
+            @if (_detail is not null)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_detail.StatusName</MudChip>
+            }
+        </StatusChip>
+
+        <Alerts>
+            <ConcurrencyAlert Conflict="_conflict" CanOverwrite="_user?.IsAdmin == true"
+                              OnReload="ReloadAsync" OnOverwrite="OverwriteAsync" />
+            @if (_similarNames is { Count: > 0 })
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    <MudStack Spacing="2">
+                        <MudText>Similar accounts already exist: @string.Join(", ", _similarNames).</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small" OnClick="SaveAnywayAsync">
+                                Save anyway
+                            </MudButton>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="DismissSimilar">Change the name</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </MudAlert>
+            }
+        </Alerts>
+
+        <Actions>
+            @if (_detail is not null)
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
+                    Delete
+                </MudButton>
+            }
+        </Actions>
+
+        <ReadContent>
+            @if (_detail is not null)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="VAT number" Value="@_detail.VatNumber" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Industry" Value="@_detail.IndustryName" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Phone">
+                            @if (!string.IsNullOrWhiteSpace(_detail.Phone))
+                            {
+                                <MudLink Href="@($"tel:{_detail.Phone}")">@_detail.Phone</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Website">
+                            @if (!string.IsNullOrWhiteSpace(_detail.Website))
+                            {
+                                <MudLink Href="@_detail.Website" Target="_blank" rel="noopener noreferrer">@_detail.Website</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Owner">
+                            <OwnerBadge Name="@_detail.OwnerName" IsActive="_detail.OwnerIsActive" />
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Created" Value="@TimeDisplay.Format(_detail.CreatedAt)" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </ReadContent>
+
+        <EditContent>
+            @if (_model is not null)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="_model.Name" For="@(() => _model.Name)" Label="Name" Required="true"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" MaxLength="200" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_model.VatNumber" For="@(() => _model.VatNumber)" Label="VAT number"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <LookupSelect Kind="LookupKind.Industry" Label="Industry"
+                                      @bind-Value="_model.IndustryId" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <LookupSelect Kind="LookupKind.AccountStatus" Label="Status" Required="true"
+                                      @bind-Value="_model.AccountStatusId" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <OwnerPicker Required="true" @bind-Value="_model.OwnerId" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_model.Phone" For="@(() => _model.Phone)" Label="Phone" InputType="InputType.Telephone"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudTextField @bind-Value="_model.Website" For="@(() => _model.Website)" Label="Website" InputType="InputType.Url"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="300"
+                                      HelperText="https://example.com" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </EditContent>
+    </RecordHeader>
+}
+
+@code {
+    private const int NotLoaded = -1;
+
+    private int _loadedFor = NotLoaded;
+    private UserContext? _user;
+    private AccountDetail? _detail;
+    private AccountEditModel? _model;
+    private EditContext? _editContext;
+    private ValidationMessageStore? _messages;
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private ConcurrencyConflict? _conflict;
+    private IReadOnlyList<string>? _similarNames;
+    private List<BreadcrumbItem> _crumbs = [];
+
+    /// <summary>Null on /accounts/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+
+    private string PageTitleText => IsNew ? "New account" : _detail?.Name ?? "Account";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Id ?? 0;
+        if (key == _loadedFor)
+        {
+            return;
+        }
+
+        _loading = true;
+        _user ??= await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        _conflict = null;
+        _similarNames = null;
+        _detail = null;
+
+        if (IsNew)
+        {
+            BeginEdit(await Accounts.NewAsync(_user));
+        }
+        else
+        {
+            _editing = false;
+            _model = null;
+            _editContext = null;
+
+            _detail = await Accounts.GetAsync(Id!.Value, _user);
+            if (_detail is null)
+            {
+                // Missing, deleted and not visible all look the same, so ids can't be probed.
+                Navigation.NotFound();
+                return;
+            }
+        }
+
+        _crumbs =
+        [
+            new BreadcrumbItem("Accounts", "accounts"),
+            new BreadcrumbItem(PageTitleText, href: null, disabled: true),
+        ];
+        _loadedFor = key;
+        _loading = false;
+    }
+
+    // ---- Edit mode ----
+
+    private void BeginEdit() => BeginEdit(_detail!.ToEditModel());
+
+    private void BeginEdit(AccountEditModel model)
+    {
+        _model = model;
+        _conflict = null;
+        _similarNames = null;
+        _editContext = new EditContext(model);
+        _messages = new ValidationMessageStore(_editContext);
+
+        // A server-side error on a field goes away as soon as the user edits that field.
+        _editContext.OnFieldChanged += (_, e) => _messages.Clear(e.FieldIdentifier);
+        _editing = true;
+    }
+
+    private async Task CancelAsync()
+    {
+        if (IsNew)
+        {
+            Navigation.NavigateTo("accounts");
+            return;
+        }
+
+        _editing = false;
+        _model = null;
+        _editContext = null;
+        _conflict = null;
+        _similarNames = null;
+        await Task.CompletedTask;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _detail = await Accounts.GetAsync(Id!.Value, _user!);
+        if (_detail is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        await CancelAsync();
+    }
+
+    // ---- Save ----
+
+    private Task SaveAsync() => SaveAsync(new AccountSaveOptions());
+
+    private Task SaveAnywayAsync() => SaveAsync(new AccountSaveOptions { AcceptSimilarNames = true });
+
+    private Task OverwriteAsync() => SaveAsync(new AccountSaveOptions { AcceptSimilarNames = true, Overwrite = true });
+
+    private void DismissSimilar() => _similarNames = null;
+
+    private async Task SaveAsync(AccountSaveOptions options)
+    {
+        _saving = true;
+        _conflict = null;
+        _similarNames = null;
+        try
+        {
+            var result = await Accounts.SaveAsync(_model!, _user!, options);
+            switch (result.Status)
+            {
+                case AccountSaveStatus.Saved:
+                    Snackbar.Add("Account saved.", Severity.Success);
+                    await AfterSavedAsync(result.Id);
+                    break;
+
+                case AccountSaveStatus.Invalid:
+                    ShowFieldErrors(result.FieldErrors!);
+                    break;
+
+                case AccountSaveStatus.SimilarNames:
+                    _similarNames = result.SimilarNames;
+                    break;
+
+                case AccountSaveStatus.Conflict:
+                    _conflict = result.Conflict;
+                    break;
+
+                case AccountSaveStatus.NotFound:
+                    Snackbar.Add("This account no longer exists.", Severity.Warning);
+                    _editContext!.MarkAsUnmodified();
+                    Navigation.NavigateTo("accounts");
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Could not save the account. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task AfterSavedAsync(int id)
+    {
+        // Mark clean first so the unsaved-changes guard does not fire on our own navigation.
+        _editContext!.MarkAsUnmodified();
+        _editing = false;
+
+        if (IsNew)
+        {
+            Navigation.NavigateTo($"accounts/{id}", new NavigationOptions { ReplaceHistoryEntry = true });
+            return;
+        }
+
+        _detail = await Accounts.GetAsync(id, _user!);
+        _model = null;
+        _editContext = null;
+    }
+
+    private void ShowFieldErrors(IReadOnlyDictionary<string, string> errors)
+    {
+        _messages!.Clear();
+        foreach (var (field, message) in errors)
+        {
+            var identifier = field.Length == 0 ? new FieldIdentifier(_model!, string.Empty) : _editContext!.Field(field);
+            _messages.Add(identifier, message);
+        }
+
+        _editContext!.NotifyValidationStateChanged();
+    }
+
+    // ---- Delete ----
+
+    private async Task DeleteAsync()
+    {
+        var impact = await Accounts.GetDeleteImpactAsync(Id!.Value, _user!);
+        if (impact is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        if (impact.OpenOpportunities > 0)
+        {
+            Snackbar.Add(
+                $"This account has {impact.OpenOpportunities} open {(impact.OpenOpportunities == 1 ? "opportunity" : "opportunities")}. Close or reassign {(impact.OpenOpportunities == 1 ? "it" : "them")} first.",
+                Severity.Warning);
+            return;
+        }
+
+        var affected = impact.Contacts == 0
+            ? "It has no contacts."
+            : $"Its {impact.Contacts} {(impact.Contacts == 1 ? "contact" : "contacts")} will be deleted with it.";
+
+        if (!await Dialogs.ConfirmAsync("Delete account?", $"Delete {_detail!.Name}? {affected}", "Delete"))
+        {
+            return;
+        }
+
+        var result = await Accounts.DeleteAsync(Id!.Value, _user!);
+        if (result.Status == AccountDeleteStatus.Blocked)
+        {
+            Snackbar.Add(result.Message ?? "This account cannot be deleted.", Severity.Warning);
+            return;
+        }
+
+        Snackbar.Add("Account deleted.", Severity.Success);
+        Navigation.NavigateTo("accounts");
+    }
+
+}

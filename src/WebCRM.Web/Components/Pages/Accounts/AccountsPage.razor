@@ -1,0 +1,171 @@
+@page "/accounts"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Accounts
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Lookups
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IAccountService Accounts
+@inject IUserContextProvider UserContexts
+@inject ILookupService Lookups
+@inject IOwnerService Owners
+
+<PageTitle>Accounts</PageTitle>
+
+@if (_user is not null)
+{
+    <CrmListPage TDto="AccountListItem" Title="Accounts" EntityName="account" NewHref="accounts/new"
+                 Scopes="_scopes" DefaultScope="_defaultScope" FilterKeys="_filterKeys"
+                 Load="LoadAsync" RowHref="@(a => $"accounts/{a.Id}")">
+        <Filters Context="list">
+            <MudSelect T="int?" Label="Status" Value="list.State.GetInt(StatusKey)"
+                       ValueChanged="@(v => list.SetFilterAsync(StatusKey, v?.ToString()))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;">
+                @foreach (var status in _statuses)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" Label="Industry" Value="list.State.GetInt(IndustryKey)"
+                       ValueChanged="@(v => list.SetFilterAsync(IndustryKey, v?.ToString()))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var industry in _industries)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)industry.Id)">@industry.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" Label="Owner" Value="list.State.GetFilter(OwnerKey)"
+                       ValueChanged="@(v => list.SetFilterAsync(OwnerKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var owner in _owners)
+                {
+                    <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField T="string" Label="City" Value="list.State.GetFilter(CityKey)"
+                          ValueChanged="@(v => list.SetFilterAsync(CityKey, v))"
+                          Immediate="true" DebounceInterval="250" Clearable="true"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 160px;" />
+        </Filters>
+
+        <Columns>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
+                <CellTemplate><strong>@context.Item.Name</strong></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="industry">Industry</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.IndustryName</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="city">City</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.City</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="status">Status</SortHeader></HeaderTemplate>
+                <CellTemplate><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@context.Item.StatusName</MudChip></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="owner">Owner</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false" HeaderStyle="text-align: right;" CellStyle="text-align: right;">
+                <HeaderTemplate><SortHeader Key="opportunities">Open opportunities</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.OpenOpportunities</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="AccountListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="activity">Last activity</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    @if (context.Item.LastActivityAt is { } at)
+                    {
+                        <span title="@TimeDisplay.Format(at)">@TimeDisplay.Relative(at, DateTime.UtcNow)</span>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+
+        <Card Context="a">
+            <MudStack Spacing="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                    <MudText Typo="Typo.subtitle1"><strong>@a.Name</strong></MudText>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@a.StatusName</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @string.Join(" · ", new[] { a.IndustryName, a.City }.Where(s => !string.IsNullOrEmpty(s)))
+                </MudText>
+                <MudText Typo="Typo.body2">
+                    @a.OpenOpportunities open @(a.OpenOpportunities == 1 ? "opportunity" : "opportunities")
+                </MudText>
+                <OwnerBadge Name="@a.OwnerName" IsActive="a.OwnerIsActive" />
+            </MudStack>
+        </Card>
+    </CrmListPage>
+}
+
+@code {
+    private const string StatusKey = "status";
+    private const string IndustryKey = "industry";
+    private const string OwnerKey = "owner";
+    private const string CityKey = "city";
+
+    private static readonly string[] _filterKeys = [StatusKey, IndustryKey, OwnerKey, CityKey];
+
+    private UserContext? _user;
+    private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
+    private ListScope _defaultScope = ListScope.Mine;
+    private IReadOnlyList<LookupOption> _statuses = [];
+    private IReadOnlyList<LookupOption> _industries = [];
+    private IReadOnlyList<OwnerOption> _owners = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        // Sales and Admin: Mine / All. Manager also gets My team, and starts on it.
+        _defaultScope = _user.Role switch
+        {
+            RoleNames.Manager => ListScope.Team,
+            RoleNames.Admin => ListScope.All,
+            _ => ListScope.Mine,
+        };
+        _scopes = _user.IsManager
+            ? [ListScope.Mine, ListScope.Team, ListScope.All]
+            : [ListScope.Mine, ListScope.All];
+
+        _statuses = await Lookups.GetOptionsAsync(LookupKind.AccountStatus);
+        _industries = await Lookups.GetOptionsAsync(LookupKind.Industry);
+        _owners = await Owners.GetFilterOptionsAsync();
+    }
+
+    private Task<PagedResult<AccountListItem>> LoadAsync(ListState state, CancellationToken cancellationToken)
+    {
+        var query = new AccountQuery(
+            Scope: state.Scope,
+            Search: state.Search,
+            StatusId: state.GetInt(StatusKey),
+            IndustryId: state.GetInt(IndustryKey),
+            OwnerId: state.GetFilter(OwnerKey),
+            City: state.GetFilter(CityKey),
+            Sort: state.Sort?.ToLowerInvariant() switch
+            {
+                "industry" => AccountSort.Industry,
+                "city" => AccountSort.City,
+                "status" => AccountSort.Status,
+                "owner" => AccountSort.Owner,
+                "opportunities" => AccountSort.OpenOpportunities,
+                "activity" => AccountSort.LastActivity,
+                _ => AccountSort.Name,
+            },
+            Descending: state.Descending,
+            Page: state.Page);
+
+        return Accounts.SearchAsync(query, _user!, cancellationToken);
+    }
+}

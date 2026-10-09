@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using WebCRM.Core.Entities;
 using WebCRM.Core.Interfaces;
+using WebCRM.Core.Users;
 using WebCRM.Data;
 using WebCRM.Data.Interceptors;
 using WebCRM.Data.Seeding;
@@ -53,6 +54,10 @@ builder.Services.AddDbContextFactory<CrmDbContext>(
         .AddInterceptors(services.GetRequiredService<AuditFieldsInterceptor>()),
     ServiceLifetime.Scoped);
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+// Data services (accounts, lookups, owners) and the signed-in user's role and team.
+builder.Services.AddCrmServices();
+builder.Services.AddScoped<IUserContextProvider, UserContextProvider>();
 
 builder.Services.AddIdentityCore<User>(options =>
     {

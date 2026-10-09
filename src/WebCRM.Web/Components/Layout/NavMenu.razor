@@ -6,6 +6,10 @@
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
 
+    <AuthorizeView>
+        <MudNavLink Href="accounts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business">Accounts</MudNavLink>
+    </AuthorizeView>
+
     <MudDivider Class="my-2" />
 
     <AuthorizeView>
