@@ -1,3 +1,4 @@
+@using WebCRM.Web.Services
 @implements IDisposable
 
 @inject NavigationManager NavigationManager
@@ -9,7 +10,7 @@
 
     <AuthorizeView>
         <Authorized>
-            <MudNavLink Href="Account/Manage" Icon="@Icons.Material.Filled.Person">@context.User.Identity?.Name</MudNavLink>
+            <MudNavLink Href="Account/Manage" Icon="@Icons.Material.Filled.Person">@(context.User.FindFirst(AppUserClaimsPrincipalFactory.DisplayNameClaimType)?.Value ?? context.User.Identity?.Name)</MudNavLink>
             @* Sign out is a POST with an antiforgery token, handled by the /Account/Logout endpoint. *@
             <form action="Account/Logout" method="post">
                 <AntiforgeryToken />
