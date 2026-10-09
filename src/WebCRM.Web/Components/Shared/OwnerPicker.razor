@@ -1,0 +1,50 @@
+@using System.Linq.Expressions
+@using WebCRM.Core.Users
+@inject IOwnerService Owners
+@inject IUserContextProvider UserContexts
+
+@* Users the current user may assign records to (Admin: everyone, Manager: own team, Sales: themselves).
+   The record's current owner always shows, marked when inactive. *@
+
+<MudSelect T="string" Label="@Label" Value="Value" ValueChanged="ValueChanged" For="ValueExpression"
+           Required="Required" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+           AnchorOrigin="Origin.BottomCenter" ToStringFunc="OwnerText">
+    @foreach (var owner in _options)
+    {
+        <MudSelectItem T="string" Value="@owner.Id">@Text(owner)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    private IReadOnlyList<OwnerOption> _options = [];
+    private bool _loaded;
+
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter] public Expression<Func<string?>>? ValueExpression { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Owner";
+
+    [Parameter] public bool Required { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private static string Text(OwnerOption owner) => owner.IsActive ? owner.DisplayName : $"{owner.DisplayName} (inactive)";
+
+    private string? OwnerText(string? id) => _options.FirstOrDefault(o => o.Id == id) is { } owner ? Text(owner) : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_loaded || (Value is { } id && _options.All(o => o.Id != id)))
+        {
+            if (await UserContexts.GetAsync() is { } user)
+            {
+                _options = await Owners.GetAssignableAsync(user, Value);
+            }
+
+            _loaded = true;
+        }
+    }
+}

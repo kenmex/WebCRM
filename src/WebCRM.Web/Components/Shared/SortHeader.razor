@@ -1,0 +1,27 @@
+@* Column header that sorts the list on the server. Put it in a column's HeaderTemplate and set Sortable="false" on the column. *@
+
+<button type="button" class="crm-sort-header" @onclick="OnClick" aria-label="@AriaLabel">
+    <span>@ChildContent</span>
+    @if (IsSorted)
+    {
+        <MudIcon Icon="@(List!.State.Descending ? Icons.Material.Filled.ArrowDownward : Icons.Material.Filled.ArrowUpward)"
+                 Size="Size.Small" />
+    }
+</button>
+
+@code {
+    [CascadingParameter] private IListController? List { get; set; }
+
+    /// <summary>The sort key the list's service understands (e.g. "name").</summary>
+    [Parameter, EditorRequired] public string Key { get; set; } = string.Empty;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool IsSorted => List is not null && string.Equals(List.State.Sort, Key, StringComparison.OrdinalIgnoreCase);
+
+    private string AriaLabel => IsSorted
+        ? $"Sorted {(List!.State.Descending ? "descending" : "ascending")}. Click to reverse."
+        : "Click to sort";
+
+    private Task OnClick() => List?.SortByAsync(Key) ?? Task.CompletedTask;
+}

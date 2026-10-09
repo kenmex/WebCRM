@@ -1,0 +1,48 @@
+@using System.Linq.Expressions
+@using WebCRM.Core.Lookups
+@inject ILookupService Lookups
+
+@* A dropdown over a lookup table. Inactive values are hidden, except the one the record already has. *@
+
+<MudSelect T="int?" Label="@Label" Value="Value" ValueChanged="ValueChanged" For="ValueExpression"
+           Required="Required" Clearable="@(!Required)" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+           AnchorOrigin="Origin.BottomCenter" ToStringFunc="OptionText">
+    @foreach (var option in _options)
+    {
+        <MudSelectItem T="int?" Value="@((int?)option.Id)">@Text(option)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    private IReadOnlyList<LookupOption> _options = [];
+    private LookupKind? _loadedKind;
+
+    [Parameter, EditorRequired] public LookupKind Kind { get; set; }
+
+    [Parameter] public int? Value { get; set; }
+
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+
+    [Parameter] public Expression<Func<int?>>? ValueExpression { get; set; }
+
+    [Parameter] public string? Label { get; set; }
+
+    [Parameter] public bool Required { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    // Text of the selected value comes from here, not from the (lazily rendered) popover items.
+    private static string Text(LookupOption option) => option.IsActive ? option.Name : $"{option.Name} (inactive)";
+
+    private string? OptionText(int? id) => _options.FirstOrDefault(o => o.Id == id) is { } option ? Text(option) : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Load once per kind; reload only if the value is something the list does not have yet.
+        if (_loadedKind != Kind || (Value is { } id && _options.All(o => o.Id != id)))
+        {
+            _options = await Lookups.GetOptionsAsync(Kind, Value);
+            _loadedKind = Kind;
+        }
+    }
+}

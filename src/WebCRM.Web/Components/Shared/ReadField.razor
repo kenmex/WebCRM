@@ -1,0 +1,28 @@
+@* A label with its value, for the read-mode body of a detail header. Shows a dash when empty. *@
+
+<div>
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@Label</MudText>
+    <MudText Typo="Typo.body1">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else if (!string.IsNullOrWhiteSpace(Value))
+        {
+            @Value
+        }
+        else
+        {
+            <span aria-label="empty">&ndash;</span>
+        }
+    </MudText>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    /// <summary>Plain text value. Use ChildContent instead for links, chips and so on.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

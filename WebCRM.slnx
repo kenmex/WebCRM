@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/WebCRM.Core.Tests/WebCRM.Core.Tests.csproj" />
     <Project Path="tests/WebCRM.Data.Tests/WebCRM.Data.Tests.csproj" />
+    <Project Path="tests/WebCRM.Web.Tests/WebCRM.Web.Tests.csproj" />
   </Folder>
 </Solution>

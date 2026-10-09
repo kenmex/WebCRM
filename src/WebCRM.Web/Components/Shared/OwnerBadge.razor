@@ -1,0 +1,26 @@
+@* Owner as avatar initials plus name; "(inactive)" when the user has been deactivated. *@
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+    <MudAvatar Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" aria-hidden="true">@Initials</MudAvatar>
+    <span>@(Name ?? "Unknown")@(IsActive ? "" : " (inactive)")</span>
+</MudStack>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+
+    [Parameter] public bool IsActive { get; set; } = true;
+
+    private string Initials
+    {
+        get
+        {
+            var parts = (Name ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..1].ToUpperInvariant(),
+                _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant(),
+            };
+        }
+    }
+}

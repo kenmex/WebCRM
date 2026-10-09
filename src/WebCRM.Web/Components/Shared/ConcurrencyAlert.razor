@@ -1,0 +1,39 @@
+@using WebCRM.Core
+@using WebCRM.Core.Accounts
+
+@if (Conflict is not null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">
+        <MudStack Spacing="2">
+            <MudText>
+                Changed by @(Conflict.ChangedBy ?? "someone else")
+                @if (Conflict.ChangedAtUtc is { } at)
+                {
+                    <text> at @TimeDisplay.Format(at)</text>
+                }
+                since you opened it. Your changes were not saved.
+            </MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="OnReload">Reload (lose my changes)</MudButton>
+                @if (CanOverwrite)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small" OnClick="OnOverwrite">
+                        Overwrite with my changes
+                    </MudButton>
+                }
+            </MudStack>
+        </MudStack>
+    </MudAlert>
+}
+
+@code {
+    /// <summary>The conflict to show, or null for nothing.</summary>
+    [Parameter] public ConcurrencyConflict? Conflict { get; set; }
+
+    /// <summary>Overwrite is for Admin only.</summary>
+    [Parameter] public bool CanOverwrite { get; set; }
+
+    [Parameter] public EventCallback OnReload { get; set; }
+
+    [Parameter] public EventCallback OnOverwrite { get; set; }
+}

@@ -1,0 +1,413 @@
+@typeparam TDto
+@implements IListController
+@implements IBrowserViewportObserver
+@implements IAsyncDisposable
+@using Microsoft.Extensions.Logging
+@using MudBlazor.Services
+@using WebCRM.Core.Querying
+@inject NavigationManager Navigation
+@inject IBrowserViewportService Viewport
+@inject ILogger<CrmListPage<TDto>> Logger
+
+@* The list pattern (docs/page-spec.md, "List page"): scope chips, quick filter, typed filters, grid on
+   desktop, card list on phones. Page, sort and filters live in the URL; every change navigates and the
+   location-changed handler reloads, so there is one path from a click to the data. *@
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4" HtmlTag="h1">@Title</MudText>
+        @if (NewHref is not null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="@NewHref">
+                New
+            </MudButton>
+        }
+    </MudStack>
+
+    @if (Scopes.Count > 1)
+    {
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" role="group" aria-label="Scope">
+            @foreach (var scope in Scopes)
+            {
+                var selected = scope == State.Scope;
+                <MudChip T="string" Variant="@(selected ? Variant.Filled : Variant.Outlined)"
+                         Color="@(selected ? Color.Primary : Color.Default)"
+                         OnClick="() => SetScopeAsync(scope)">
+                    @ScopeLabel(scope)
+                </MudChip>
+            }
+        </MudStack>
+    }
+
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+        <MudTextField T="string" Value="@State.Search" ValueChanged="OnSearchChanged"
+                      Immediate="true" DebounceInterval="250"
+                      Placeholder="@($"Search {Title.ToLowerInvariant()}")" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Clearable="true" Style="max-width: 320px; min-width: 200px;" />
+        @Filters?.Invoke(this)
+        @if (State.HasFilters)
+        {
+            <MudButton Variant="Variant.Text" OnClick="ClearFiltersAsync">Clear filters</MudButton>
+        }
+    </MudStack>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+            @_error
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="ReloadAsync" Class="ml-2">Retry</MudButton>
+        </MudAlert>
+    }
+    else if (!_viewportKnown || (_loading && !_loadedOnce))
+    {
+        <MudStack Spacing="1" aria-busy="true">
+            @for (var i = 0; i < 6; i++)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="44px" />
+            }
+        </MudStack>
+    }
+    else if (_total == 0)
+    {
+        <MudPaper Outlined="true" Class="pa-8 d-flex flex-column align-center" role="status">
+            @if (State.HasFilters)
+            {
+                <MudText Typo="Typo.h6">No results</MudText>
+                <MudText Color="Color.Secondary" Class="mb-3">Nothing matches the current filters.</MudText>
+                <MudButton Variant="Variant.Outlined" OnClick="ClearFiltersAsync">Clear filters</MudButton>
+            }
+            else
+            {
+                <MudText Typo="Typo.h6">@($"No {Title.ToLowerInvariant()} here yet")</MudText>
+                @if (Scopes.Count > 1 && State.Scope != ListScope.All)
+                {
+                    <MudText Color="Color.Secondary" Class="mb-3">Try the "All I can see" scope, or add one.</MudText>
+                }
+                @if (NewHref is not null)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="@NewHref">
+                        New @EntityName
+                    </MudButton>
+                }
+            }
+        </MudPaper>
+    }
+    else if (_isPhone)
+    {
+        <MudStack Spacing="2">
+            @foreach (var item in _items)
+            {
+                <a href="@RowHref?.Invoke(item)" class="crm-card-link" style="text-decoration: none; color: inherit; display: block;">
+                    <MudPaper Outlined="true" Class="pa-3">
+                        @Card?.Invoke(item)
+                    </MudPaper>
+                </a>
+            }
+            @if (_items.Count < _total)
+            {
+                <MudButton Variant="Variant.Outlined" FullWidth="true" Disabled="_loading" OnClick="LoadMoreAsync">
+                    Load more (@_items.Count of @_total)
+                </MudButton>
+            }
+        </MudStack>
+    }
+    else
+    {
+        <MudPaper Outlined="true">
+            <CascadingValue Value="(IListController)this" IsFixed="true">
+                <MudDataGrid T="TDto" Items="_items" Loading="_loading" Hover="true" Dense="true" Elevation="0"
+                             RowClick="OnRowClick" RowStyleFunc="@((_, _) => "cursor: pointer;")">
+                    <Columns>@Columns</Columns>
+                </MudDataGrid>
+            </CascadingValue>
+            @if (_total > 0)
+            {
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="pa-2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @FirstOnPage&ndash;@LastOnPage of @_total
+                    </MudText>
+                    @if (PageCount > 1)
+                    {
+                        <MudPagination Count="PageCount" Selected="State.Page" SelectedChanged="GoToPageAsync"
+                                       Size="Size.Small" ShowFirstButton="true" ShowLastButton="true" />
+                    }
+                </MudStack>
+            }
+        </MudPaper>
+    }
+</MudStack>
+
+@code {
+    private CancellationTokenSource? _cts;
+    private IReadOnlyList<TDto> _items = [];
+    private int _total;
+    private int _phonePage = 1;
+    private bool _loading = true;
+    private bool _loadedOnce;
+    private string? _error;
+    private bool _viewportKnown;
+    private bool _isPhone;
+    private bool _subscribed;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Singular lower-case noun for the New button and empty state, e.g. "account".</summary>
+    [Parameter] public string EntityName { get; set; } = "record";
+
+    [Parameter] public string? NewHref { get; set; }
+
+    [Parameter] public IReadOnlyList<ListScope> Scopes { get; set; } = [ListScope.Mine, ListScope.All];
+
+    [Parameter] public ListScope DefaultScope { get; set; } = ListScope.Mine;
+
+    /// <summary>Query-string keys of the typed filters (the Filters fragment reads and writes them).</summary>
+    [Parameter] public IReadOnlyList<string> FilterKeys { get; set; } = [];
+
+    /// <summary>Loads one page for the given state. Runs in SQL: paging, sorting and filtering never happen in memory.</summary>
+    [Parameter, EditorRequired] public Func<ListState, CancellationToken, Task<PagedResult<TDto>>> Load { get; set; } = default!;
+
+    [Parameter] public int PageSize { get; set; } = 25;
+
+    /// <summary>Typed filter controls. The context is this list: use State and SetFilterAsync.</summary>
+    [Parameter] public RenderFragment<IListController>? Filters { get; set; }
+
+    /// <summary>MudBlazor columns for the desktop grid.</summary>
+    [Parameter, EditorRequired] public RenderFragment Columns { get; set; } = default!;
+
+    /// <summary>Phone card content: name, two key fields, owner.</summary>
+    [Parameter, EditorRequired] public RenderFragment<TDto> Card { get; set; } = default!;
+
+    /// <summary>Where a row or card opens the record.</summary>
+    [Parameter, EditorRequired] public Func<TDto, string> RowHref { get; set; } = default!;
+
+    public ListState State { get; private set; } = new();
+
+    // IBrowserViewportObserver: tells us when the screen crosses the md breakpoint (grid or cards).
+    Guid IBrowserViewportObserver.Id { get; } = Guid.NewGuid();
+
+    ResizeOptions IBrowserViewportObserver.ResizeOptions { get; } = new();
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
+
+    private int FirstOnPage => (State.Page - 1) * PageSize + 1;
+
+    private int LastOnPage => Math.Min(State.Page * PageSize, _total);
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Read the URL again whenever the parameters change; this covers the first render too.
+        State = ListState.FromUri(Navigation.Uri, Scopes, DefaultScope, FilterKeys);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_subscribed)
+        {
+            _subscribed = true;
+
+            // Prerender is off, so JS interop is available here. fireImmediately reports the current size.
+            await Viewport.SubscribeAsync(this, fireImmediately: true);
+        }
+    }
+
+    Task IBrowserViewportObserver.NotifyBrowserViewportChangeAsync(BrowserViewportEventArgs args)
+    {
+        var phone = args.Breakpoint is Breakpoint.Xs or Breakpoint.Sm;
+        if (_viewportKnown && phone == _isPhone)
+        {
+            return Task.CompletedTask;
+        }
+
+        _viewportKnown = true;
+        _isPhone = phone;
+        return InvokeAsync(ReloadAsync);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Ignore navigation to another page: this component is about to be disposed.
+        if (new Uri(e.Location).AbsolutePath != new Uri(Navigation.Uri).AbsolutePath || !_viewportKnown)
+        {
+            return;
+        }
+
+        State = ListState.FromUri(e.Location, Scopes, DefaultScope, FilterKeys);
+        _ = InvokeAsync(ReloadAsync);
+    }
+
+    // ---- Loading ----
+
+    private async Task ReloadAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+
+        _loading = true;
+        _error = null;
+        _phonePage = 1;
+        StateHasChanged();
+
+        try
+        {
+            // On a phone there are no page numbers: always start from the first page and use Load more.
+            var request = _isPhone ? State.Clone() : State;
+            if (_isPhone)
+            {
+                request.Page = 1;
+            }
+
+            var result = await Load(request, cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // A shared link or a deleted row can leave us past the last page: go to the last one.
+            if (!_isPhone && result.Items.Count == 0 && result.TotalCount > 0 && State.Page > 1)
+            {
+                var last = (int)Math.Ceiling(result.TotalCount / (double)PageSize);
+                NavigateTo(State.Clone().With(s => s.Page = last), replace: true);
+                return;
+            }
+
+            _items = result.Items;
+            _total = result.TotalCount;
+            _loadedOnce = true;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading the {Title} list failed.", Title);
+            if (!cts.IsCancellationRequested)
+            {
+                _error = $"Could not load {Title.ToLowerInvariant()}.";
+            }
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        _loading = true;
+        try
+        {
+            var request = State.Clone();
+            request.Page = _phonePage + 1;
+            var result = await Load(request, cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _phonePage++;
+                _items = [.. _items, .. result.Items];
+                _total = result.TotalCount;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading more {Title} failed.", Title);
+            _error = $"Could not load more {Title.ToLowerInvariant()}.";
+        }
+
+        _loading = false;
+    }
+
+    // ---- State changes: every one is a navigation, so the URL always matches the screen ----
+
+    private void NavigateTo(ListState next, bool replace = false) =>
+        Navigation.NavigateTo(
+            Navigation.GetUriWithQueryParameters(next.ToQueryParameters(DefaultScope, FilterKeys)),
+            new NavigationOptions { ReplaceHistoryEntry = replace });
+
+    private Task SetScopeAsync(ListScope scope)
+    {
+        NavigateTo(State.Clone().With(s => { s.Scope = scope; s.Page = 1; }));
+        return Task.CompletedTask;
+    }
+
+    private Task OnSearchChanged(string? text)
+    {
+        // Typing replaces the history entry, so Back does not step through every keystroke.
+        NavigateTo(State.Clone().With(s => { s.Search = text; s.Page = 1; }), replace: true);
+        return Task.CompletedTask;
+    }
+
+    public Task SetFilterAsync(string key, string? value)
+    {
+        NavigateTo(State.Clone().With(s => { s.SetFilter(key, value); s.Page = 1; }));
+        return Task.CompletedTask;
+    }
+
+    public Task SortByAsync(string key)
+    {
+        NavigateTo(State.Clone().With(s =>
+        {
+            s.Descending = string.Equals(s.Sort, key, StringComparison.OrdinalIgnoreCase) && !s.Descending;
+            s.Sort = key;
+            s.Page = 1;
+        }));
+        return Task.CompletedTask;
+    }
+
+    private Task GoToPageAsync(int page)
+    {
+        NavigateTo(State.Clone().With(s => s.Page = page));
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        NavigateTo(State.Clone().With(s =>
+        {
+            s.Search = null;
+            s.Filters.Clear();
+            s.Page = 1;
+        }));
+        return Task.CompletedTask;
+    }
+
+    private void OnRowClick(DataGridRowClickEventArgs<TDto> args) => Navigation.NavigateTo(RowHref(args.Item!));
+
+    private static string ScopeLabel(ListScope scope) => scope switch
+    {
+        ListScope.Mine => "Mine",
+        ListScope.Team => "My team",
+        _ => "All I can see",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+
+        if (_subscribed)
+        {
+            try
+            {
+                await Viewport.UnsubscribeAsync(this);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit is already gone; nothing to unsubscribe from.
+            }
+        }
+    }
+}

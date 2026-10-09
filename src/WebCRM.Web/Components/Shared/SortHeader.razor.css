@@ -1,0 +1,12 @@
+/* Layout only: the button takes the header's own font and colour so the theme stays in one place. */
+.crm-sort-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}

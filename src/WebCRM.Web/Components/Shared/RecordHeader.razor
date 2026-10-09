@@ -1,0 +1,177 @@
+@implements IDisposable
+@inject IDialogService Dialogs
+
+@* The header card of a detail page (docs/page-spec.md, "Detail page"). Read mode by default; Edit switches the
+   card into an EditForm in place. The page owns the model, the EditContext and saving; this component owns the
+   look, Save/Cancel/Esc, and the "unsaved changes" guard. *@
+
+<MudPaper Outlined="true" Class="pa-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+                <MudText Typo="Typo.h5" HtmlTag="h1">@Title</MudText>
+                @StatusChip
+            </MudStack>
+
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                @if (IsEditing)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="Saving" OnClick="SubmitAsync"
+                               StartIcon="@Icons.Material.Filled.Save">
+                        @(Saving ? "Saving..." : "Save")
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="Saving" OnClick="CancelAsync">Cancel</MudButton>
+                }
+                else
+                {
+                    @if (CanEdit)
+                    {
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="OnEdit">Edit</MudButton>
+                    }
+                    @Actions
+                }
+            </MudStack>
+        </MudStack>
+
+        @Alerts
+
+        @if (IsEditing && EditContext is not null)
+        {
+            <EditForm EditContext="EditContext" OnSubmit="SubmitAsync">
+                <DataAnnotationsValidator />
+                @* Esc cancels the edit. Keys typed in the fields bubble up to this wrapper. *@
+                <div @onkeydown="OnKeyDown">@EditContent</div>
+            </EditForm>
+        }
+        else
+        {
+            @ReadContent
+        }
+    </MudStack>
+</MudPaper>
+
+@* Leaving a dirty form (nav click, browser back, closing the tab) asks first. *@
+<NavigationLock ConfirmExternalNavigation="_dirty" OnBeforeInternalNavigation="OnBeforeNavigationAsync" />
+
+@code {
+    private EditContext? _subscribedTo;
+    private bool _dirty;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    [Parameter] public RenderFragment? StatusChip { get; set; }
+
+    /// <summary>Read-mode body: the key fields.</summary>
+    [Parameter] public RenderFragment? ReadContent { get; set; }
+
+    /// <summary>Edit-mode body: the form fields. Rendered inside an EditForm.</summary>
+    [Parameter] public RenderFragment? EditContent { get; set; }
+
+    /// <summary>Extra read-mode buttons after Edit (Delete, Log activity, ...).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>Banners above the body: concurrency conflict, similar-name warning.</summary>
+    [Parameter] public RenderFragment? Alerts { get; set; }
+
+    [Parameter] public bool IsEditing { get; set; }
+
+    [Parameter] public bool CanEdit { get; set; } = true;
+
+    [Parameter] public bool Saving { get; set; }
+
+    /// <summary>The form's context; the page creates it for the model being edited.</summary>
+    [Parameter] public EditContext? EditContext { get; set; }
+
+    [Parameter] public EventCallback OnEdit { get; set; }
+
+    /// <summary>Raised when the form is valid. The page saves.</summary>
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    /// <summary>Raised when the user confirmed leaving edit mode (the page discards its edit model).</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_subscribedTo, EditContext))
+        {
+            if (_subscribedTo is not null)
+            {
+                _subscribedTo.OnFieldChanged -= OnFieldChanged;
+            }
+
+            _subscribedTo = EditContext;
+            if (_subscribedTo is not null)
+            {
+                _subscribedTo.OnFieldChanged += OnFieldChanged;
+            }
+        }
+
+        _dirty = IsEditing && EditContext?.IsModified() == true;
+    }
+
+    private void OnFieldChanged(object? sender, FieldChangedEventArgs e)
+    {
+        _dirty = true;
+        StateHasChanged();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (Saving || EditContext is null)
+        {
+            return;
+        }
+
+        if (EditContext.Validate())
+        {
+            await OnSave.InvokeAsync();
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (Saving)
+        {
+            return;
+        }
+
+        if (_dirty && !await Dialogs.ConfirmAsync(
+                "Discard changes?", "You have unsaved changes. They will be lost.", "Discard", "Keep editing"))
+        {
+            return;
+        }
+
+        _dirty = false;
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CancelAsync();
+        }
+    }
+
+    private async Task OnBeforeNavigationAsync(LocationChangingContext context)
+    {
+        if (!_dirty || !IsEditing)
+        {
+            return;
+        }
+
+        if (!await Dialogs.ConfirmAsync(
+                "Leave without saving?", "You have unsaved changes. They will be lost.", "Leave", "Stay"))
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_subscribedTo is not null)
+        {
+            _subscribedTo.OnFieldChanged -= OnFieldChanged;
+        }
+    }
+}

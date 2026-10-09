@@ -1,0 +1,22 @@
+@* Test host: a minimal list page built on CrmListPage, so the tests can drive it like a real page. *@
+
+<CrmListPage TDto="Row" Title="Accounts" EntityName="account" NewHref="accounts/new"
+             Scopes="@(new[] { ListScope.Mine, ListScope.Team, ListScope.All })" DefaultScope="ListScope.Mine"
+             FilterKeys="@(new[] { "status" })" Load="Load" RowHref="@(r => $"accounts/{r.Id}")">
+    <Filters Context="list">
+        <button type="button" class="set-status" @onclick='() => list.SetFilterAsync("status", "2")'>Active only</button>
+    </Filters>
+    <Columns>
+        <TemplateColumn T="Row" Sortable="false">
+            <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
+            <CellTemplate><span class="cell-name">@context.Item.Name</span></CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <Card Context="r"><span class="card-name">@r.Name</span></Card>
+</CrmListPage>
+
+@code {
+    public sealed record Row(int Id, string Name);
+
+    [Parameter, EditorRequired] public Func<ListState, CancellationToken, Task<PagedResult<Row>>> Load { get; set; } = default!;
+}

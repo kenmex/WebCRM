@@ -17,9 +17,17 @@ public sealed class AppUserClaimsPrincipalFactory(
 {
     public const string DisplayNameClaimType = "display_name";
 
+    /// <summary>The user's team, for the My team scope and owner rules. Absent when the user has no team.</summary>
+    public const string TeamIdClaimType = "team_id";
+
     protected override async Task<ClaimsIdentity> GenerateClaimsAsync(User user)
     {
         var identity = await base.GenerateClaimsAsync(user);
+
+        if (user.TeamId is { } teamId)
+        {
+            identity.AddClaim(new Claim(TeamIdClaimType, teamId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
 
         if (!string.IsNullOrWhiteSpace(user.DisplayName))
         {
