@@ -3,9 +3,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using WebCRM.Core.Entities;
+using WebCRM.Core.Interfaces;
 using WebCRM.Data;
+using WebCRM.Data.Interceptors;
 using WebCRM.Web.Components;
 using WebCRM.Web.Components.Account;
+using WebCRM.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,11 +36,21 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? throw new InvalidOperationException(
         "Connection string 'DefaultConnection' not found. Set it with: dotnet user-secrets set \"ConnectionStrings:DefaultConnection\" \"...\"");
 
+// Who is saving and when: used by the interceptor that fills CreatedBy/UpdatedBy.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddScoped<AuditFieldsInterceptor>();
+
 // Factory instead of a scoped DbContext: in Interactive Server a scope lasts for the whole
 // circuit (browser tab), so components create a short-lived context per operation.
-// AddDbContextFactory also registers a scoped CrmDbContext, which the Identity stores use.
-builder.Services.AddDbContextFactory<CrmDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// The factory itself is scoped (one per circuit or request) so each context gets the
+// interceptor for the right user. AddDbContextFactory also registers a scoped
+// CrmDbContext, which the Identity stores use.
+builder.Services.AddDbContextFactory<CrmDbContext>(
+    (services, options) => options
+        .UseSqlServer(connectionString)
+        .AddInterceptors(services.GetRequiredService<AuditFieldsInterceptor>()),
+    ServiceLifetime.Scoped);
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddIdentityCore<User>(options =>

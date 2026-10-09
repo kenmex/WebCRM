@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using WebCRM.Core.Entities;
+using static WebCRM.Data.Configurations.ConfigurationExtensions;
 
 namespace WebCRM.Data.Configurations;
 
@@ -9,9 +10,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {
+        builder.ToTable(t => t.HasCheckConstraint("CK_AspNetUsers_Theme", IsDefinedEnum<ThemePreference>("Theme")));
+
+        // One team per user.
+        builder.HasOne<Team>().WithMany().HasForeignKey(u => u.TeamId).OnDelete(DeleteBehavior.Restrict);
+
         builder.Property(u => u.DisplayName)
             .HasMaxLength(100)
-            .UseCollation("Greek_100_CI_AI")
+            .UseCollation(AccentInsensitive)
             .IsRequired();
 
         builder.Property(u => u.PhoneNumber)
