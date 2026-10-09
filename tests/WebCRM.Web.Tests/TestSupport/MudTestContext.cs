@@ -51,10 +51,18 @@ public sealed class FakeViewport : IBrowserViewportService, IAsyncDisposable
 
     public Breakpoint Breakpoint { get; set; } = Breakpoint.Lg;
 
+    /// <summary>Simulates the JS call failing (circuit trouble, blocked script).</summary>
+    public bool Fail { get; set; }
+
     public ResizeOptions ResizeOptions { get; } = new();
 
     public async Task SubscribeAsync(IBrowserViewportObserver observer, bool fireImmediately = true)
     {
+        if (Fail)
+        {
+            throw new InvalidOperationException("JS interop failed");
+        }
+
         _observer = observer;
         if (fireImmediately)
         {

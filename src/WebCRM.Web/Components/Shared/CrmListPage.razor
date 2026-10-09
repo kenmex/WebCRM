@@ -212,7 +212,19 @@
             _subscribed = true;
 
             // Prerender is off, so JS interop is available here. fireImmediately reports the current size.
-            await Viewport.SubscribeAsync(this, fireImmediately: true);
+            try
+            {
+                await Viewport.SubscribeAsync(this, fireImmediately: true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // No browser size: show the desktop grid rather than a skeleton that never ends.
+                Logger.LogWarning(ex, "Could not read the browser size; showing the desktop layout.");
+                _subscribed = false;
+                _viewportKnown = true;
+                _isPhone = false;
+                await InvokeAsync(ReloadAsync);
+            }
         }
     }
 
@@ -278,24 +290,26 @@
 
             _items = result.Items;
             _total = result.TotalCount;
-            _loadedOnce = true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             return;
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Loading the {Title} list failed.", Title);
+            _error = $"Could not load {Title.ToLowerInvariant()}.";
+        }
+        finally
+        {
+            // Whatever happened, the skeleton must go: show the rows, or the error with Retry. This runs
+            // after an await, outside any event handler, so Blazor does not re-render by itself.
             if (!cts.IsCancellationRequested)
             {
-                _error = $"Could not load {Title.ToLowerInvariant()}.";
+                _loading = false;
+                _loadedOnce = true;
+                await InvokeAsync(StateHasChanged);
             }
-        }
-
-        if (!cts.IsCancellationRequested)
-        {
-            _loading = false;
         }
     }
 
@@ -316,7 +330,7 @@
                 _total = result.TotalCount;
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             return;
         }
@@ -325,8 +339,14 @@
             Logger.LogError(ex, "Loading more {Title} failed.", Title);
             _error = $"Could not load more {Title.ToLowerInvariant()}.";
         }
-
-        _loading = false;
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     // ---- State changes: every one is a navigation, so the URL always matches the screen ----

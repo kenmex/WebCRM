@@ -85,6 +85,87 @@ public class CrmListPageTests : MudTestContext
         cut.WaitForAssertion(() => cut.FindAll(".cell-name").Count.ShouldBe(1));
     }
 
+    // ---- Asynchronous loads: the real database never answers synchronously ----
+
+    [Fact]
+    public async Task A_load_that_finishes_later_replaces_the_skeleton_with_the_rows()
+    {
+        var gate = new TaskCompletionSource<PagedResult<Row>>();
+        var cut = Render<CrmListPageHost>(p => p.Add(x => x.Load, (_, _) => gate.Task));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("aria-busy"));
+
+        await cut.InvokeAsync(() => gate.SetResult(Rows(2, 2)));
+
+        cut.WaitForAssertion(() => cut.FindAll(".cell-name").Count.ShouldBe(2));
+        cut.Markup.ShouldNotContain("aria-busy");
+    }
+
+    [Fact]
+    public async Task A_load_that_fails_later_shows_the_error_state_with_Retry_never_the_skeleton()
+    {
+        var gate = new TaskCompletionSource<PagedResult<Row>>();
+        var cut = Render<CrmListPageHost>(p => p.Add(x => x.Load, (_, _) => gate.Task));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("aria-busy"));
+
+        await cut.InvokeAsync(() => gate.SetException(new InvalidOperationException("could not be translated")));
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Could not load accounts"));
+        cut.Markup.ShouldNotContain("aria-busy");
+        cut.FindAll("button").ShouldContain(b => b.TextContent.Trim() == "Retry");
+    }
+
+    [Fact]
+    public async Task Retry_after_an_asynchronous_failure_loads_the_rows()
+    {
+        var attempts = new List<TaskCompletionSource<PagedResult<Row>>>();
+        var cut = Render<CrmListPageHost>(p => p.Add(x => x.Load, (_, _) =>
+        {
+            var gate = new TaskCompletionSource<PagedResult<Row>>();
+            attempts.Add(gate);
+            return gate.Task;
+        }));
+        cut.WaitForAssertion(() => attempts.Count.ShouldBe(1));
+        await cut.InvokeAsync(() => attempts[0].SetException(new InvalidOperationException("boom")));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Could not load accounts"));
+
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Retry").Click();
+        cut.WaitForAssertion(() => attempts.Count.ShouldBe(2));
+        await cut.InvokeAsync(() => attempts[1].SetResult(Rows(1, 1)));
+
+        cut.WaitForAssertion(() => cut.FindAll(".cell-name").Count.ShouldBe(1));
+        cut.Markup.ShouldNotContain("Could not load");
+    }
+
+    [Fact]
+    public async Task An_error_while_loading_more_on_a_phone_shows_the_error_state_too()
+    {
+        Viewport.Breakpoint = Breakpoint.Xs;
+        var calls = 0;
+        var cut = Render<CrmListPageHost>(p => p.Add(x => x.Load, async (_, _) =>
+        {
+            await Task.Yield();
+            return ++calls == 1 ? Rows(2, 5) : throw new InvalidOperationException("boom");
+        }));
+        cut.WaitForAssertion(() => cut.FindAll(".card-name").Count.ShouldBe(2));
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Load more")).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Could not load more accounts"));
+        cut.Markup.ShouldNotContain("aria-busy");
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public void If_the_browser_size_cannot_be_read_the_list_still_loads_as_a_grid()
+    {
+        Viewport.Fail = true;
+        _data = _ => Rows(2, 2);
+
+        var cut = RenderList();
+
+        cut.WaitForAssertion(() => cut.FindAll(".cell-name").Count.ShouldBe(2));
+    }
+
     // ---- Empty states ----
 
     [Fact]
