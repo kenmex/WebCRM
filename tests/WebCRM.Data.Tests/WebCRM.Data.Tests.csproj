@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WebCRM.Core\WebCRM.Core.csproj" />
     <ProjectReference Include="..\..\src\WebCRM.Data\WebCRM.Data.csproj" />
+    <ProjectReference Include="..\..\src\WebCRM.DemoData\WebCRM.DemoData.csproj" />
   </ItemGroup>
 
 </Project>

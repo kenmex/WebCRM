@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WebCRM.DemoData": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

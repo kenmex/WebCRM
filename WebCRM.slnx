@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/WebCRM.Core/WebCRM.Core.csproj" />
     <Project Path="src/WebCRM.Data/WebCRM.Data.csproj" />
+    <Project Path="src/WebCRM.DemoData/WebCRM.DemoData.csproj" />
     <Project Path="src/WebCRM.Web/WebCRM.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

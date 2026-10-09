@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Developer tool: fills a LOCAL development database with demo data and measures the list and search queries.
+       Never referenced by WebCRM.Web, so Bogus and this code are never deployed. See docs/adr/0004-demo-data.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WebCRM.DemoData</RootNamespace>
+    <!-- The same id as WebCRM.Web, so both read the same dotnet user-secrets (connection string, Demo:Password). -->
+    <UserSecretsId>13100aed-3b3c-4d14-bd24-b30875268587</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bogus" Version="35.6.5" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebCRM.Core\WebCRM.Core.csproj" />
+    <ProjectReference Include="..\WebCRM.Data\WebCRM.Data.csproj" />
+  </ItemGroup>
+
+</Project>

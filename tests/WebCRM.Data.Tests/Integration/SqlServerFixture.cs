@@ -33,6 +33,9 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     private readonly string _databaseName = "WebCRM_Test_" + Guid.NewGuid().ToString("N");
 
+    /// <summary>The connection string of the throwaway database (for tools that open their own connection).</summary>
+    public string ConnectionString { get; private set; } = string.Empty;
+
     private ServiceProvider? _services;
 
     public bool Available { get; private set; }
@@ -45,7 +48,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
     {
         var server = Environment.GetEnvironmentVariable(ServerVariable) is { Length: > 0 } value ? value : DefaultServer;
         var serverOnly = new SqlConnectionStringBuilder(server) { InitialCatalog = "master", ConnectTimeout = 5 }.ConnectionString;
-        var connectionString = new SqlConnectionStringBuilder(server)
+        ConnectionString = new SqlConnectionStringBuilder(server)
         {
             InitialCatalog = _databaseName,
             ConnectTimeout = 5,
@@ -58,7 +61,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
         services.AddScoped<AuditFieldsInterceptor>();
         services.AddDbContextFactory<CrmDbContext>(
             (sp, options) => options
-                .UseSqlServer(connectionString)
+                .UseSqlServer(ConnectionString)
                 .AddInterceptors(sp.GetRequiredService<AuditFieldsInterceptor>()),
             ServiceLifetime.Scoped);
         services.AddIdentityCore<User>(options => options.Stores.SchemaVersion = IdentitySchemaVersions.Version3)
