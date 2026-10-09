@@ -48,10 +48,10 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | FullName | computed, persisted |  |  | `CONCAT_WS(' ', FirstName, LastName)`; indexed for search and sort |
 | AccountId | int | no |  | FK Account (required in MVP, D5) |
 | JobTitle | nvarchar(100) | yes |  |  |
-| Email | nvarchar(254) AI | yes |  | Valid format; duplicates among active contacts warned; indexed |
-| Phone | nvarchar(30) | yes |  |  |
-| Mobile | nvarchar(30) | yes |  |  |
-| OwnerId | nvarchar(450) | no | account owner | FK user; index (OwnerId, IsActive) |
+| Email | nvarchar(254) AI | yes |  | Stored trimmed and lower case. Valid format: one `@`, a domain with a dot, no spaces. Duplicates among active contacts are warned, not blocked (compared case-insensitively); indexed |
+| Phone | nvarchar(30) | yes |  | Shown as a `tel:` link |
+| Mobile | nvarchar(30) | yes |  | Shown as a `tel:` link; the Call button uses it when Phone is empty |
+| OwnerId | nvarchar(450) | no | account owner | FK user; index (OwnerId, IsActive). Defaults to the owner of the contact's account; on create the account owner is always an allowed value, whatever the creator's own assignment rule (Sales: self, Manager: own team). On edit the normal rule applies, and the current owner may stay |
 | ImportBatchId | int | yes |  | FK ImportBatch |
 
 ## Sales pipeline
