@@ -15,9 +15,14 @@ public sealed class FakeAccountService : IAccountService
     public Func<AccountEditModel, SaveResult> OnSave { get; set; } =
         _ => new SaveResult(SaveStatus.Saved, Id: 42);
 
+    public List<AccountQuery> Searches { get; } = [];
+
     public Task<PagedResult<AccountListItem>> SearchAsync(
-        AccountQuery query, UserContext user, CancellationToken cancellationToken = default) =>
-        Task.FromResult(PagedResult<AccountListItem>.Empty);
+        AccountQuery query, UserContext user, CancellationToken cancellationToken = default)
+    {
+        Searches.Add(query);
+        return Task.FromResult(PagedResult<AccountListItem>.Empty);
+    }
 
     public Task<AccountDetail?> GetAsync(int id, UserContext user, CancellationToken cancellationToken = default) =>
         Task.FromResult(Accounts.GetValueOrDefault(id));

@@ -22,6 +22,7 @@
                  Load="LoadAsync" RowHref="@(a => $"accounts/{a.Id}")">
         <Filters Context="list">
             <MudSelect T="int?" Label="Status" Value="list.State.GetInt(StatusKey)"
+                       ToStringFunc="@(id => _statuses.FirstOrDefault(s => s.Id == id)?.Name)"
                        ValueChanged="@(v => list.SetFilterAsync(StatusKey, v?.ToString()))"
                        Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;">
                 @foreach (var status in _statuses)
@@ -30,6 +31,7 @@
                 }
             </MudSelect>
             <MudSelect T="int?" Label="Industry" Value="list.State.GetInt(IndustryKey)"
+                       ToStringFunc="@(id => _industries.FirstOrDefault(i => i.Id == id)?.Name)"
                        ValueChanged="@(v => list.SetFilterAsync(IndustryKey, v?.ToString()))"
                        Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
                 @foreach (var industry in _industries)
@@ -37,7 +39,8 @@
                     <MudSelectItem T="int?" Value="@((int?)industry.Id)">@industry.Name</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="string" Label="Owner" Value="list.State.GetFilter(OwnerKey)"
+            <MudSelect T="string" Label="Owner" Value="@(list.State.GetFilter(OwnerKey))"
+                       ToStringFunc="@(id => _owners.FirstOrDefault(o => o.Id == id)?.DisplayName)"
                        ValueChanged="@(v => list.SetFilterAsync(OwnerKey, v))"
                        Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
                 @foreach (var owner in _owners)
@@ -45,7 +48,7 @@
                     <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
                 }
             </MudSelect>
-            <MudTextField T="string" Label="City" Value="list.State.GetFilter(CityKey)"
+            <MudTextField T="string" Label="City" Value="@(list.State.GetFilter(CityKey))"
                           ValueChanged="@(v => list.SetFilterAsync(CityKey, v))"
                           Immediate="true" DebounceInterval="250" Clearable="true"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 160px;" />

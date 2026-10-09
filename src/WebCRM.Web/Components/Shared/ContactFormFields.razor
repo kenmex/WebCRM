@@ -1,0 +1,74 @@
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Users
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+
+@* The contact form fields, shared by the Contact page header card and the Add contact dialog. Must sit inside an
+   EditForm. On a new contact the owner follows the account's owner until the user picks an owner themselves. *@
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" sm="6">
+        <MudTextField @bind-Value="Model.FirstName" For="@(() => Model.FirstName)" Label="First name"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" AutoFocus="@(AutoFocus && !LockAccount)" />
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudTextField @bind-Value="Model.LastName" For="@(() => Model.LastName)" Label="Last name" Required="true"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" AutoFocus="@(AutoFocus && LockAccount)" />
+    </MudItem>
+    <MudItem xs="12" md="8">
+        <AccountPicker Value="Model.AccountId" ValueChanged="OnAccountChangedAsync" ValueExpression="@(() => Model.AccountId)"
+                       Required="true" Disabled="LockAccount" />
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudTextField @bind-Value="Model.JobTitle" For="@(() => Model.JobTitle)" Label="Job title"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudTextField @bind-Value="Model.Email" For="@(() => Model.Email)" Label="Email" InputType="InputType.Email"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="254" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudTextField @bind-Value="Model.Phone" For="@(() => Model.Phone)" Label="Phone" InputType="InputType.Telephone"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudTextField @bind-Value="Model.Mobile" For="@(() => Model.Mobile)" Label="Mobile" InputType="InputType.Telephone"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <OwnerPicker Required="true" Value="@Model.OwnerId" ValueChanged="OnOwnerChangedAsync"
+                     ValueExpression="@(() => Model.OwnerId)" />
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _ownerChosen;
+
+    [Parameter, EditorRequired] public ContactEditModel Model { get; set; } = default!;
+
+    /// <summary>A new contact: changing the account also changes the owner (until the owner is chosen by hand).</summary>
+    [Parameter] public bool IsNew { get; set; }
+
+    /// <summary>The account is fixed (Add contact on an account page).</summary>
+    [Parameter] public bool LockAccount { get; set; }
+
+    [Parameter] public bool AutoFocus { get; set; } = true;
+
+    private async Task OnAccountChangedAsync(int? accountId)
+    {
+        Model.AccountId = accountId;
+
+        if (IsNew && !_ownerChosen && accountId is { } id && await UserContexts.GetAsync() is { } user
+            && await Contacts.GetDefaultOwnerAsync(id, user) is { } owner)
+        {
+            Model.OwnerId = owner;
+        }
+    }
+
+    private Task OnOwnerChangedAsync(string? ownerId)
+    {
+        _ownerChosen = true;
+        Model.OwnerId = ownerId;
+        return Task.CompletedTask;
+    }
+}

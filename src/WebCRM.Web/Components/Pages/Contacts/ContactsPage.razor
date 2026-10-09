@@ -1,0 +1,161 @@
+@page "/contacts"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+@inject IOwnerService Owners
+
+<PageTitle>Contacts</PageTitle>
+
+@if (_user is not null)
+{
+    <CrmListPage TDto="ContactListItem" Title="Contacts" EntityName="contact" NewHref="contacts/new"
+                 Scopes="_scopes" DefaultScope="_defaultScope" FilterKeys="_filterKeys"
+                 Load="LoadAsync" RowHref="@(c => $"contacts/{c.Id}")">
+        <Filters Context="list">
+            <div style="min-width: 220px; max-width: 280px;">
+                <AccountPicker Label="Account" Value="list.State.GetInt(AccountKey)"
+                               ValueChanged="@(v => list.SetFilterAsync(AccountKey, v?.ToString()))" />
+            </div>
+            <MudSelect T="string" Label="Owner" Value="@(list.State.GetFilter(OwnerKey))"
+                       ToStringFunc="@(id => _owners.FirstOrDefault(o => o.Id == id)?.DisplayName)"
+                       ValueChanged="@(v => list.SetFilterAsync(OwnerKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var owner in _owners)
+                {
+                    <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" Label="Email" Value="@(list.State.GetFilter(HasEmailKey))"
+                       ToStringFunc="@(v => v == "1" ? "Has email" : v == "0" ? "No email" : null)"
+                       ValueChanged="@(v => list.SetFilterAsync(HasEmailKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                <MudSelectItem T="string" Value="@("1")">Has email</MudSelectItem>
+                <MudSelectItem T="string" Value="@("0")">No email</MudSelectItem>
+            </MudSelect>
+        </Filters>
+
+        <Columns>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
+                <CellTemplate><strong>@context.Item.FullName</strong></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="account">Account</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.AccountName</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="jobtitle">Job title</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.JobTitle</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="email">Email</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    @* The link opens the mail app; it must not also open the contact, so the click stops here. *@
+                    @if (Links.MailtoUri(context.Item.Email) is { } mail)
+                    {
+                        <a href="@mail" @onclick:stopPropagation="true">@context.Item.Email</a>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Title="Phone" Sortable="false">
+                <CellTemplate>
+                    @if (PhoneOf(context.Item) is { } phone && Links.TelUri(phone) is { } tel)
+                    {
+                        <a href="@tel" @onclick:stopPropagation="true">@phone</a>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="owner">Owner</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="ContactListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="activity">Last activity</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    @if (context.Item.LastActivityAt is { } at)
+                    {
+                        <span title="@TimeDisplay.Format(at)">@TimeDisplay.Relative(at, DateTime.UtcNow)</span>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+
+        <Card Context="c">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle1"><strong>@c.FullName</strong></MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @string.Join(" · ", new[] { c.AccountName, c.JobTitle }.Where(s => !string.IsNullOrEmpty(s)))
+                </MudText>
+                <OwnerBadge Name="@c.OwnerName" IsActive="c.OwnerIsActive" />
+            </MudStack>
+        </Card>
+    </CrmListPage>
+}
+
+@code {
+    private const string AccountKey = "account";
+    private const string OwnerKey = "owner";
+    private const string HasEmailKey = "email";
+
+    private static readonly string[] _filterKeys = [AccountKey, OwnerKey, HasEmailKey];
+
+    private UserContext? _user;
+    private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
+    private ListScope _defaultScope = ListScope.Mine;
+    private IReadOnlyList<OwnerOption> _owners = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        // Sales and Admin: Mine / All. Manager also gets My team, and starts on it.
+        _defaultScope = _user.Role switch
+        {
+            RoleNames.Manager => ListScope.Team,
+            RoleNames.Admin => ListScope.All,
+            _ => ListScope.Mine,
+        };
+        _scopes = _user.IsManager
+            ? [ListScope.Mine, ListScope.Team, ListScope.All]
+            : [ListScope.Mine, ListScope.All];
+
+        _owners = await Owners.GetFilterOptionsAsync();
+    }
+
+    // The phone number to show and dial: Phone, or Mobile when there is none.
+    private static string? PhoneOf(ContactListItem c) => string.IsNullOrWhiteSpace(c.Phone) ? c.Mobile : c.Phone;
+
+    private Task<PagedResult<ContactListItem>> LoadAsync(ListState state, CancellationToken cancellationToken)
+    {
+        var query = new ContactQuery(
+            Scope: state.Scope,
+            Search: state.Search,
+            AccountId: state.GetInt(AccountKey),
+            OwnerId: state.GetFilter(OwnerKey),
+            HasEmail: state.GetFilter(HasEmailKey) switch { "1" => true, "0" => false, _ => null },
+            Sort: state.Sort?.ToLowerInvariant() switch
+            {
+                "account" => ContactSort.Account,
+                "jobtitle" => ContactSort.JobTitle,
+                "email" => ContactSort.Email,
+                "owner" => ContactSort.Owner,
+                "activity" => ContactSort.LastActivity,
+                _ => ContactSort.Name,
+            },
+            Descending: state.Descending,
+            Page: state.Page);
+
+        return Contacts.SearchAsync(query, _user!, cancellationToken);
+    }
+}

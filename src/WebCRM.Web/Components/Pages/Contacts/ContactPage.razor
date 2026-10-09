@@ -1,0 +1,283 @@
+@page "/contacts/new"
+@page "/contacts/{Id:int}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Records
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="220px" />
+}
+else
+{
+    <MudBreadcrumbs Items="_crumbs" Class="px-0" />
+
+    <RecordHeader Title="@PageTitleText" EditContext="_editor.Context" IsEditing="_editor.IsEditing" Saving="_editor.IsSaving"
+                  OnEdit="BeginEdit" OnSave="SaveAsync" OnCancel="CancelAsync">
+        <Subtitle>
+            @if (_detail is not null)
+            {
+                <MudLink Href="@($"accounts/{_detail.AccountId}")">@_detail.AccountName</MudLink>
+                @if (!string.IsNullOrWhiteSpace(_detail.JobTitle))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Inline="true"> &middot; @_detail.JobTitle</MudText>
+                }
+            }
+        </Subtitle>
+
+        <Alerts>
+            <ConcurrencyAlert Conflict="_editor.Conflict" CanOverwrite="_user?.IsAdmin == true"
+                              OnReload="ReloadAsync" OnOverwrite="OverwriteAsync" />
+            <SaveWarningAlert Warning="_editor.Warning" OnAccept="SaveAnywayAsync" OnDismiss="_editor.DismissWarning" />
+        </Alerts>
+
+        <Actions>
+            @if (_detail is not null)
+            {
+                @* On a phone the big buttons in the body do this job. *@
+                @if (CallHref is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Phone" Href="@CallHref"
+                               Class="d-none d-md-inline-flex">Call</MudButton>
+                }
+                @if (MailHref is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Email" Href="@MailHref"
+                               Class="d-none d-md-inline-flex">Email</MudButton>
+                }
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
+                    Delete
+                </MudButton>
+            }
+        </Actions>
+
+        <ReadContent>
+            @if (_detail is not null)
+            {
+                @* The phone layout (docs/page-spec.md, P11): name and account above, then large Call and Email buttons,
+                   then the details. Desktop shows the same actions as small buttons in the header. *@
+                @if (CallHref is not null || MailHref is not null)
+                {
+                    <MudStack Spacing="2" Class="d-md-none mb-3" data-phone-actions="true">
+                        @if (CallHref is not null)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.Phone" Href="@CallHref">Call</MudButton>
+                        }
+                        @if (MailHref is not null)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Large" FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.Email" Href="@MailHref">Email</MudButton>
+                        }
+                    </MudStack>
+                }
+
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Email">
+                            @if (MailHref is not null)
+                            {
+                                <MudLink Href="@MailHref">@_detail.Email</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Phone">
+                            @if (Links.TelUri(_detail.Phone) is { } phoneHref)
+                            {
+                                <MudLink Href="@phoneHref">@_detail.Phone</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Mobile">
+                            @if (Links.TelUri(_detail.Mobile) is { } mobileHref)
+                            {
+                                <MudLink Href="@mobileHref">@_detail.Mobile</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Job title" Value="@_detail.JobTitle" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Owner">
+                            <OwnerBadge Name="@_detail.OwnerName" IsActive="_detail.OwnerIsActive" />
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Created" Value="@TimeDisplay.Format(_detail.CreatedAt)" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </ReadContent>
+
+        <EditContent>
+            @if (_editor.Model is { } model)
+            {
+                <ContactFormFields Model="model" IsNew="IsNew" />
+            }
+        </EditContent>
+    </RecordHeader>
+}
+
+@code {
+    private const int NotLoaded = -1;
+
+    private readonly RecordEditor<ContactEditModel> _editor = new();
+    private int _loadedFor = NotLoaded;
+    private UserContext? _user;
+    private ContactDetail? _detail;
+    private bool _loading = true;
+    private List<BreadcrumbItem> _crumbs = [];
+
+    /// <summary>Null on /contacts/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    /// <summary>/contacts/new?account=5 starts a contact for that account.</summary>
+    [SupplyParameterFromQuery(Name = "account")] public int? AccountId { get; set; }
+
+    private bool IsNew => Id is null;
+
+    private string PageTitleText => IsNew ? "New contact" : _detail?.FullName ?? "Contact";
+
+    // Call uses the phone, or the mobile when there is no phone.
+    private string? CallHref => Links.TelUri(_detail?.Phone) ?? Links.TelUri(_detail?.Mobile);
+
+    private string? MailHref => Links.MailtoUri(_detail?.Email);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Id ?? 0;
+        if (key == _loadedFor)
+        {
+            return;
+        }
+
+        _loading = true;
+        _user ??= await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        _detail = null;
+        _editor.End();
+
+        if (IsNew)
+        {
+            _editor.Begin(await Contacts.NewAsync(_user, AccountId));
+        }
+        else
+        {
+            _detail = await Contacts.GetAsync(Id!.Value, _user);
+            if (_detail is null)
+            {
+                // Missing, deleted and not visible all look the same, so ids can't be probed.
+                Navigation.NotFound();
+                return;
+            }
+        }
+
+        _crumbs =
+        [
+            new BreadcrumbItem("Contacts", "contacts"),
+            new BreadcrumbItem(PageTitleText, href: null, disabled: true),
+        ];
+        _loadedFor = key;
+        _loading = false;
+    }
+
+    // ---- Edit mode ----
+
+    private void BeginEdit() => _editor.Begin(_detail!.ToEditModel());
+
+    private Task CancelAsync()
+    {
+        if (IsNew)
+        {
+            Navigation.NavigateTo("contacts");
+            return Task.CompletedTask;
+        }
+
+        _editor.End();
+        return Task.CompletedTask;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _detail = await Contacts.GetAsync(Id!.Value, _user!);
+        if (_detail is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        _editor.End();
+    }
+
+    // ---- Save ----
+
+    private Task SaveAsync() => SaveAsync(new SaveOptions());
+
+    private Task SaveAnywayAsync() => SaveAsync(new SaveOptions { AcceptWarnings = true });
+
+    private Task OverwriteAsync() => SaveAsync(new SaveOptions { AcceptWarnings = true, Overwrite = true });
+
+    private Task SaveAsync(SaveOptions options) => _editor.SaveAsync(
+        save: o => Contacts.SaveAsync(_editor.Model!, _user!, o),
+        options: options,
+        onSaved: AfterSavedAsync,
+        onNotFound: () =>
+        {
+            Snackbar.Add("This contact no longer exists.", Severity.Warning);
+            Navigation.NavigateTo("contacts");
+            return Task.CompletedTask;
+        },
+        onError: _ => Snackbar.Add("Could not save the contact. Please try again.", Severity.Error));
+
+    private async Task AfterSavedAsync(SaveResult result)
+    {
+        Snackbar.Add("Contact saved.", Severity.Success);
+
+        // Mark clean first so the unsaved-changes guard does not fire on our own navigation.
+        _editor.MarkClean();
+
+        if (IsNew)
+        {
+            Navigation.NavigateTo($"contacts/{result.Id}", new NavigationOptions { ReplaceHistoryEntry = true });
+            return;
+        }
+
+        _detail = await Contacts.GetAsync(result.Id, _user!);
+        _editor.End();
+    }
+
+    // ---- Delete ----
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.ConfirmAsync("Delete contact?", $"Delete {_detail!.FullName}?", "Delete"))
+        {
+            return;
+        }
+
+        if (!await Contacts.DeleteAsync(Id!.Value, _user!))
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        Snackbar.Add("Contact deleted.", Severity.Success);
+        Navigation.NavigateTo("contacts");
+    }
+}

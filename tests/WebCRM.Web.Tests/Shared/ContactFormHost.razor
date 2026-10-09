@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using WebCRM.Core.Contacts
+
+@* Test host: the contact form fields inside a form, as the contact page and the Add contact dialog use them. *@
+
+<EditForm EditContext="Context">
+    <ContactFormFields Model="Model" IsNew="IsNew" LockAccount="LockAccount" />
+</EditForm>
+
+@code {
+    public ContactEditModel Model { get; } = new();
+
+    public EditContext Context { get; }
+
+    public ContactFormHost() => Context = new EditContext(Model);
+
+    [Parameter] public bool IsNew { get; set; } = true;
+
+    [Parameter] public bool LockAccount { get; set; }
+
+    [Parameter] public int? InitialAccountId { get; set; }
+
+    [Parameter] public string? InitialOwnerId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Model.AccountId = InitialAccountId;
+        Model.OwnerId = InitialOwnerId;
+    }
+}

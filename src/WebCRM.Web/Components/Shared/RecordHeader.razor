@@ -8,9 +8,15 @@
 <MudPaper Outlined="true" Class="pa-4">
     <MudStack Spacing="3">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
-                <MudText Typo="Typo.h5" HtmlTag="h1">@Title</MudText>
-                @StatusChip
+            <MudStack Spacing="0">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+                    <MudText Typo="Typo.h5" HtmlTag="h1">@Title</MudText>
+                    @StatusChip
+                </MudStack>
+                @if (Subtitle is not null)
+                {
+                    <div>@Subtitle</div>
+                }
             </MudStack>
 
             <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
@@ -62,6 +68,9 @@
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
 
     [Parameter] public RenderFragment? StatusChip { get; set; }
+
+    /// <summary>A line under the title, e.g. the account a contact belongs to.</summary>
+    [Parameter] public RenderFragment? Subtitle { get; set; }
 
     /// <summary>Read-mode body: the key fields.</summary>
     [Parameter] public RenderFragment? ReadContent { get; set; }
