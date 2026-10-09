@@ -45,7 +45,19 @@ jobs:
         run: dotnet build --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test --no-build
+        run: |
+          set -o pipefail
+          dotnet test --no-build 2>&1 | tee test.log
+
+      # The job log needs a sign-in to read; annotations do not. So list the failed tests (with the first lines of
+      # their messages) as an annotation, which shows on the run page and through the API.
+      - name: Report failed tests
+        if: failure()
+        run: |
+          if [ -f test.log ]; then
+            msg=$(grep -E -A3 '^[[:space:]]*failed ' test.log | head -80 | sed 's/%/%25/g' | tr '\n' '|' | cut -c1-3800)
+            echo "::error title=Failed tests::$msg"
+          fi
 
       - name: Format check
         run: dotnet format --verify-no-changes --no-restore

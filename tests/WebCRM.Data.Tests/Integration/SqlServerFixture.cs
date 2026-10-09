@@ -26,6 +26,9 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public const string RequireVariable = "WEBCRM_TEST_REQUIRE_SQLSERVER";
 
+    /// <summary>The default of the SQL Server Linux container image, which CI uses.</summary>
+    private const string DatabaseCollation = "SQL_Latin1_General_CP1_CI_AS";
+
     private const string DefaultServer = "Server=localhost;Trusted_Connection=True;TrustServerCertificate=True";
 
     private readonly string _databaseName = "WebCRM_Test_" + Guid.NewGuid().ToString("N");
@@ -41,6 +44,7 @@ public sealed class SqlServerFixture : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         var server = Environment.GetEnvironmentVariable(ServerVariable) is { Length: > 0 } value ? value : DefaultServer;
+        var serverOnly = new SqlConnectionStringBuilder(server) { InitialCatalog = "master", ConnectTimeout = 5 }.ConnectionString;
         var connectionString = new SqlConnectionStringBuilder(server)
         {
             InitialCatalog = _databaseName,
@@ -64,6 +68,17 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
         try
         {
+            // The database gets an explicit collation: the SQL Server Linux image (CI) defaults to
+            // SQL_Latin1_General_CP1_CI_AS while a developer machine may use another (e.g. Greek_CI_AS), and the tests
+            // must not depend on which. Columns that need Greek_100_CI_AI or a binary collation say so themselves.
+            await using (var master = new SqlConnection(serverOnly))
+            {
+                await master.OpenAsync();
+                await using var create = master.CreateCommand();
+                create.CommandText = $"CREATE DATABASE [{_databaseName}] COLLATE {DatabaseCollation}";
+                await create.ExecuteNonQueryAsync();
+            }
+
             await using var db = CreateContext();
             await db.Database.MigrateAsync();
             Available = true;
