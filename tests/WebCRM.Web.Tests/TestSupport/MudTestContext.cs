@@ -20,6 +20,7 @@ public abstract class MudTestContext : BunitContext
     }
 
     private IRenderedComponent<MudDialogProvider>? _dialogProvider;
+    private IRenderedComponent<MudPopoverProvider>? _popoverProvider;
 
     /// <summary>
     /// Renders the popover, dialog and snackbar providers, as MainLayout does. Call it after registering
@@ -32,10 +33,14 @@ public abstract class MudTestContext : BunitContext
             return;
         }
 
-        Render<MudPopoverProvider>();
+        _popoverProvider = Render<MudPopoverProvider>();
         _dialogProvider = Render<MudDialogProvider>();
         Render<MudSnackbarProvider>();
     }
+
+    /// <summary>The rendered popover provider: open dropdowns and autocomplete results show up in its markup.</summary>
+    protected IRenderedComponent<MudPopoverProvider> PopoverProvider =>
+        _popoverProvider ?? throw new InvalidOperationException("Call StartProviders() first.");
 
     /// <summary>The rendered dialog provider: confirm dialogs show up in its markup.</summary>
     protected IRenderedComponent<MudDialogProvider> DialogProvider =>

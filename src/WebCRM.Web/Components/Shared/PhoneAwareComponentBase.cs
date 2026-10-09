@@ -50,7 +50,7 @@ public abstract class PhoneAwareComponentBase : ComponentBase, IBrowserViewportO
             _subscribed = false;
             ViewportKnown = true;
             IsPhone = false;
-            await InvokeAsync(OnLayoutChangedAsync);
+            await InvokeAsync(LayoutChangedAsync);
         }
     }
 
@@ -64,7 +64,15 @@ public abstract class PhoneAwareComponentBase : ComponentBase, IBrowserViewportO
 
         ViewportKnown = true;
         IsPhone = phone;
-        return InvokeAsync(OnLayoutChangedAsync);
+        return InvokeAsync(LayoutChangedAsync);
+    }
+
+    private async Task LayoutChangedAsync()
+    {
+        await OnLayoutChangedAsync();
+
+        // The layout changed outside any event handler, so Blazor would not re-render by itself.
+        StateHasChanged();
     }
 
     public virtual async ValueTask DisposeAsync()

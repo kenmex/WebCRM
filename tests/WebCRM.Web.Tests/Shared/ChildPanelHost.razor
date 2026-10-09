@@ -1,0 +1,23 @@
+@using WebCRM.Core.Querying
+
+@* Test host: a minimal child panel, like the Contacts tab on an account. *@
+
+<ChildPanel TDto="Row" Load="Load" PageSize="2" AddText="Add contact" EmptyText="No contacts yet."
+            OnAdd="OnAdd" Version="Version" RowHref="@(r => $"contacts/{r.Id}")">
+    <Columns>
+        <TemplateColumn T="Row" Title="Name">
+            <CellTemplate><span class="cell-name">@context.Item.Name</span></CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <Card Context="r"><span class="card-name">@r.Name</span></Card>
+</ChildPanel>
+
+@code {
+    public sealed record Row(int Id, string Name);
+
+    [Parameter, EditorRequired] public Func<int, CancellationToken, Task<PagedResult<Row>>> Load { get; set; } = default!;
+
+    [Parameter] public EventCallback OnAdd { get; set; }
+
+    [Parameter] public int Version { get; set; }
+}

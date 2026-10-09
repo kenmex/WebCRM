@@ -16,6 +16,7 @@ public static class DataServiceCollectionExtensions
         services.AddScoped<IOwnerService, OwnerService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IContactService, ContactService>();
+        services.AddScoped<IAccountAddressService, AccountAddressService>();
         return services;
     }
 }

@@ -1,0 +1,11 @@
+@* Test content for tabs: counts how many times it was created, so tests can see lazy loading. *@
+
+<p class="probe">@Text</p>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+
+    [Parameter] public Action? OnCreated { get; set; }
+
+    protected override void OnInitialized() => OnCreated?.Invoke();
+}

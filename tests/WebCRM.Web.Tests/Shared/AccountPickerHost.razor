@@ -1,0 +1,29 @@
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Forms
+
+@* Test host: the account picker inside a form with a required field, as the contact form uses it. *@
+
+<EditForm EditContext="Context">
+    <DataAnnotationsValidator />
+    <AccountPicker @bind-Value="Model.AccountId" Required="true" Disabled="Disabled" />
+</EditForm>
+
+@code {
+    public sealed class FormModel
+    {
+        [Required(ErrorMessage = "Choose an account.")]
+        public int? AccountId { get; set; }
+    }
+
+    public FormModel Model { get; } = new();
+
+    public EditContext Context { get; }
+
+    public AccountPickerHost() => Context = new EditContext(Model);
+
+    [Parameter] public int? InitialId { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    protected override void OnInitialized() => Model.AccountId = InitialId;
+}

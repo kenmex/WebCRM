@@ -1,0 +1,247 @@
+@typeparam TDto
+@inherits PhoneAwareComponentBase
+@using Microsoft.Extensions.Logging
+@using WebCRM.Core.Querying
+@inject NavigationManager Navigation
+@inject ILogger<ChildPanel<TDto>> Logger
+
+@* The child panel pattern (docs/page-spec.md, "Child panel"): the records related to the one on the page, in a grid
+   (cards on phones) with an Add button. Add and edit happen in a dialog, so the parent page never navigates away. It
+   does not touch the URL, so it fits on a page that has its own state. Reload it by changing Version. *@
+
+<MudStack Spacing="2">
+    @if (OnAdd.HasDelegate)
+    {
+        <MudStack Row="true" Justify="Justify.FlexEnd">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OnAdd">
+                @AddText
+            </MudButton>
+        </MudStack>
+    }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+            @_error
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="ReloadAsync" Class="ml-2">Retry</MudButton>
+        </MudAlert>
+    }
+    else if (!ViewportKnown || (_loading && !_loadedOnce))
+    {
+        <MudStack Spacing="1" aria-busy="true">
+            @for (var i = 0; i < 3; i++)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="44px" />
+            }
+        </MudStack>
+    }
+    else if (_total == 0)
+    {
+        <MudPaper Outlined="true" Class="pa-6 d-flex flex-column align-center" role="status">
+            <MudText Color="Color.Secondary">@EmptyText</MudText>
+        </MudPaper>
+    }
+    else if (IsPhone)
+    {
+        <MudStack Spacing="2">
+            @foreach (var item in _items)
+            {
+                <a href="@RowHref(item)" class="crm-card-link" style="text-decoration: none; color: inherit; display: block;">
+                    <MudPaper Outlined="true" Class="pa-3">@Card(item)</MudPaper>
+                </a>
+            }
+            @if (_items.Count < _total)
+            {
+                <MudButton Variant="Variant.Outlined" FullWidth="true" Disabled="_loading" OnClick="LoadMoreAsync">
+                    Load more (@_items.Count of @_total)
+                </MudButton>
+            }
+        </MudStack>
+    }
+    else
+    {
+        <MudPaper Outlined="true">
+            <MudDataGrid T="TDto" Items="_items" Loading="_loading" Hover="true" Dense="true" Elevation="0"
+                         RowClick="@(args => Navigation.NavigateTo(RowHref(args.Item!)))"
+                         RowStyleFunc="@((_, _) => "cursor: pointer;")">
+                <Columns>@Columns</Columns>
+            </MudDataGrid>
+            @if (_total > PageSize)
+            {
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="pa-2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @((_page - 1) * PageSize + 1)&ndash;@Math.Min(_page * PageSize, _total) of @_total
+                    </MudText>
+                    <MudPagination Count="(int)Math.Ceiling(_total / (double)PageSize)" Selected="_page"
+                                   SelectedChanged="GoToPageAsync" Size="Size.Small" />
+                </MudStack>
+            }
+        </MudPaper>
+    }
+</MudStack>
+
+@code {
+    private CancellationTokenSource? _cts;
+    private IReadOnlyList<TDto> _items = [];
+    private int _total;
+    private int _page = 1;
+    private int _loadedVersion;
+    private bool _loading = true;
+    private bool _loadedOnce;
+    private string? _error;
+
+    /// <summary>Loads one page (1-based). Runs in SQL: paging never happens in memory.</summary>
+    [Parameter, EditorRequired] public Func<int, CancellationToken, Task<PagedResult<TDto>>> Load { get; set; } = default!;
+
+    [Parameter] public int PageSize { get; set; } = 25;
+
+    /// <summary>MudBlazor columns for the desktop grid.</summary>
+    [Parameter, EditorRequired] public RenderFragment Columns { get; set; } = default!;
+
+    /// <summary>Phone card content.</summary>
+    [Parameter, EditorRequired] public RenderFragment<TDto> Card { get; set; } = default!;
+
+    /// <summary>Where a row or card opens the record.</summary>
+    [Parameter, EditorRequired] public Func<TDto, string> RowHref { get; set; } = default!;
+
+    [Parameter] public string AddText { get; set; } = "Add";
+
+    /// <summary>Raised by the Add button, which is only shown when this is set.</summary>
+    [Parameter] public EventCallback OnAdd { get; set; }
+
+    [Parameter] public string EmptyText { get; set; } = "Nothing here yet.";
+
+    /// <summary>Change this to reload from page one, e.g. after the dialog saved a record.</summary>
+    [Parameter] public int Version { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Before the browser size is known the first load waits for OnLayoutChangedAsync.
+        if (ViewportKnown && Version != _loadedVersion)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    // The browser size is known, or the screen crossed the md breakpoint: grid or cards, from page one.
+    protected override Task OnLayoutChangedAsync() => ReloadAsync();
+
+    public async Task ReloadAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+
+        _loading = true;
+        _error = null;
+        _page = 1;
+        _loadedVersion = Version;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Load(1, cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _items = result.Items;
+            _total = result.TotalCount;
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading the child panel failed.");
+            _error = "Could not load this list.";
+        }
+        finally
+        {
+            // Whatever happened, the skeleton must go: show the rows, or the error with Retry. This runs after an
+            // await, outside any event handler, so Blazor does not re-render by itself.
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                _loadedOnce = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        _loading = true;
+        try
+        {
+            var result = await Load(page, cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _items = result.Items;
+                _total = result.TotalCount;
+                _page = page;
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading a page of the child panel failed.");
+            _error = "Could not load this list.";
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        _loading = true;
+        try
+        {
+            var result = await Load(_page + 1, cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _page++;
+                _items = [.. _items, .. result.Items];
+                _total = result.TotalCount;
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading more of the child panel failed.");
+            _error = "Could not load more.";
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        await base.DisposeAsync();
+    }
+}

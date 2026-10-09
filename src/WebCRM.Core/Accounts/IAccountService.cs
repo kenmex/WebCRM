@@ -30,6 +30,16 @@ public interface IAccountService
     /// <summary>A blank form with defaults: owner = current user, status = first status.</summary>
     Task<AccountEditModel> NewAsync(UserContext user, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Accounts for the picker: names containing the text (accent-insensitive), names that start with it first,
+    /// at most <paramref name="take"/>. Blank text gives the first accounts by name.
+    /// </summary>
+    Task<IReadOnlyList<AccountPickerItem>> SearchPickerAsync(
+        string? text, UserContext user, int take = 10, CancellationToken cancellationToken = default);
+
+    /// <summary>The picker item for one account, to show the current value. Null if missing or not visible.</summary>
+    Task<AccountPickerItem?> GetPickerItemAsync(int id, UserContext user, CancellationToken cancellationToken = default);
+
     Task<SaveResult> SaveAsync(
         AccountEditModel model, UserContext user, SaveOptions? options = null,
         CancellationToken cancellationToken = default);

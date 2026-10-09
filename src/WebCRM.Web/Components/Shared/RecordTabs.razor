@@ -1,0 +1,68 @@
+@inherits PhoneAwareComponentBase
+
+@* The tabs below a detail header (docs/page-spec.md, "Detail page"). Each tab's content is created only when it is
+   first opened, then kept (so a tab keeps its state when you switch away and back). On phones the tabs become
+   stacked collapsible panels. *@
+
+@if (!ViewportKnown)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" Class="mt-4" aria-busy="true" />
+}
+else if (IsPhone)
+{
+    <MudExpansionPanels MultiExpansion="true" Class="mt-4">
+        @for (var i = 0; i < Tabs.Count; i++)
+        {
+            var index = i;
+            <MudExpansionPanel @key="Tabs[index].Title" Text="@Tabs[index].Title" Expanded="_expanded.Contains(index)"
+                               ExpandedChanged="@(open => OnPanelChanged(index, open))">
+                @if (_opened.Contains(index))
+                {
+                    @Tabs[index].Content
+                }
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+}
+else
+{
+    <MudTabs ActivePanelIndex="_active" ActivePanelIndexChanged="OnTabChanged" Class="mt-4" Elevation="0" Rounded="false">
+        @foreach (var tab in Tabs)
+        {
+            <MudTabPanel @key="tab.Title" Text="@tab.Title" />
+        }
+    </MudTabs>
+    @foreach (var index in _opened.Where(i => i < Tabs.Count).Order())
+    {
+        <div @key="Tabs[index].Title" role="tabpanel" data-record-tab="@Tabs[index].Title" aria-label="@Tabs[index].Title" hidden="@(index != _active)" class="pt-4">
+            @Tabs[index].Content
+        </div>
+    }
+}
+
+@code {
+    private readonly HashSet<int> _opened = [0];
+    private readonly HashSet<int> _expanded = [0];
+    private int _active;
+
+    [Parameter, EditorRequired] public IReadOnlyList<RecordTabItem> Tabs { get; set; } = [];
+
+    private void OnTabChanged(int index)
+    {
+        _active = index;
+        _opened.Add(index);
+    }
+
+    private void OnPanelChanged(int index, bool open)
+    {
+        if (open)
+        {
+            _expanded.Add(index);
+            _opened.Add(index);
+        }
+        else
+        {
+            _expanded.Remove(index);
+        }
+    }
+}

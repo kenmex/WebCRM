@@ -1,0 +1,98 @@
+@implements IDisposable
+@using System.Linq.Expressions
+@using WebCRM.Core.Accounts
+@using WebCRM.Core.Users
+@inject IAccountService Accounts
+@inject IUserContextProvider UserContexts
+
+@* Search-as-you-type over accounts: 250 ms debounce, the previous search is cancelled, at most 10 results, accent- and
+   case-insensitive. The value is the account id; the name shown comes from the service. *@
+
+<MudAutocomplete T="AccountPickerItem" Label="@Label" Value="_selected" ValueChanged="OnSelectedAsync"
+                 SearchFunc="SearchAsync" ToStringFunc="@(item => item?.Name)"
+                 DebounceInterval="250" MaxItems="10" MinCharacters="0"
+                 ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false" Clearable="@(!Required)"
+                 Required="Required" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+                 Error="@(ErrorText is not null)" ErrorText="@ErrorText" />
+
+@code {
+    private AccountPickerItem? _selected;
+    private EditContext? _subscribedTo;
+    private FieldIdentifier? _field;
+
+    [CascadingParameter] private EditContext? EditContext { get; set; }
+
+    /// <summary>The selected account id.</summary>
+    [Parameter] public int? Value { get; set; }
+
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+
+    [Parameter] public Expression<Func<int?>>? ValueExpression { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Account";
+
+    [Parameter] public bool Required { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private string? ErrorText =>
+        EditContext is not null && _field is { } id ? EditContext.GetValidationMessages(id).FirstOrDefault() : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(_subscribedTo, EditContext))
+        {
+            if (_subscribedTo is not null)
+            {
+                _subscribedTo.OnValidationStateChanged -= OnValidationStateChanged;
+            }
+
+            _subscribedTo = EditContext;
+            if (_subscribedTo is not null)
+            {
+                _subscribedTo.OnValidationStateChanged += OnValidationStateChanged;
+            }
+        }
+
+        _field = ValueExpression is null ? null : FieldIdentifier.Create(ValueExpression);
+
+        if (Value is null)
+        {
+            _selected = null;
+        }
+        else if (_selected?.Id != Value && await UserContexts.GetAsync() is { } user)
+        {
+            // Show the name of the account the record already has.
+            _selected = await Accounts.GetPickerItemAsync(Value.Value, user);
+        }
+    }
+
+    private async Task<IEnumerable<AccountPickerItem>> SearchAsync(string? text, CancellationToken cancellationToken)
+    {
+        var user = await UserContexts.GetAsync(cancellationToken);
+        return user is null ? [] : await Accounts.SearchPickerAsync(text, user, 10, cancellationToken);
+    }
+
+    private async Task OnSelectedAsync(AccountPickerItem? item)
+    {
+        _selected = item;
+        await ValueChanged.InvokeAsync(item?.Id);
+
+        // Our parent binds the model; tell the form so it counts as edited and clears a server-side error.
+        if (_field is { } id)
+        {
+            EditContext?.NotifyFieldChanged(id);
+        }
+    }
+
+    private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e) =>
+        _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        if (_subscribedTo is not null)
+        {
+            _subscribedTo.OnValidationStateChanged -= OnValidationStateChanged;
+        }
+    }
+}

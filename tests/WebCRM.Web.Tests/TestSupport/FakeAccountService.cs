@@ -25,6 +25,23 @@ public sealed class FakeAccountService : IAccountService
     public Task<AccountEditModel> NewAsync(UserContext user, CancellationToken cancellationToken = default) =>
         Task.FromResult(new AccountEditModel { OwnerId = user.UserId, AccountStatusId = 1 });
 
+    /// <summary>The accounts the picker offers; tests fill it.</summary>
+    public List<AccountPickerItem> Picker { get; } = [];
+
+    public List<string?> PickerSearches { get; } = [];
+
+    public Task<IReadOnlyList<AccountPickerItem>> SearchPickerAsync(
+        string? text, UserContext user, int take = 10, CancellationToken cancellationToken = default)
+    {
+        PickerSearches.Add(text);
+        IReadOnlyList<AccountPickerItem> found =
+            [.. Picker.Where(a => string.IsNullOrEmpty(text) || a.Name.Contains(text, StringComparison.OrdinalIgnoreCase)).Take(take)];
+        return Task.FromResult(found);
+    }
+
+    public Task<AccountPickerItem?> GetPickerItemAsync(int id, UserContext user, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Picker.FirstOrDefault(a => a.Id == id));
+
     public Task<SaveResult> SaveAsync(
         AccountEditModel model, UserContext user, SaveOptions? options = null,
         CancellationToken cancellationToken = default)

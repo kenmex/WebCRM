@@ -360,6 +360,57 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         (await check.Contacts.IgnoreQueryFilters().SingleAsync(c => c.AccountId == id, Ct)).IsActive.ShouldBeFalse();
     }
 
+    // ---- Account picker and addresses ----
+
+    [Fact]
+    public async Task The_picker_is_accent_and_case_insensitive_and_puts_names_starting_with_the_text_first()
+    {
+        await EnsureReferenceDataAsync();
+        await AddAccountAsync("Συμβουλευτική Αθήνα");
+        await AddAccountAsync("Αθήνα Συμβουλευτική");
+        await AddAccountAsync("Other");
+
+        // D3: no accents, different case.
+        var items = await _service.SearchPickerAsync("ΑΘΗΝΑ", _alice, cancellationToken: Ct);
+
+        var names = items.Select(i => i.Name).Where(n => n.StartsWith(_prefix)).ToList();
+        names.ShouldBe([_prefix + "Αθήνα Συμβουλευτική", _prefix + "Συμβουλευτική Αθήνα"], ignoreOrder: false);
+        (await _service.SearchPickerAsync(_prefix, _alice, cancellationToken: Ct)).Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task Addresses_round_trip_through_sql_and_feed_the_list_city_column()
+    {
+        await EnsureReferenceDataAsync();
+        var id = await AddAccountAsync("With address");
+        var addresses = new AccountAddressService(_factory);
+
+        var model = new AccountAddressesEditModel
+        {
+            BillingStreet = "1 Ermou St",
+            BillingCity = "Athens",
+            BillingCountryCode = "gr",
+            ShippingCity = "Patras",
+        };
+        (await addresses.SaveAsync(id, model, _alice, Ct)).Status.ShouldBe(SaveStatus.Saved);
+
+        // Saving again updates the same two rows (the unique index allows one of each type) and clears shipping.
+        model.BillingCity = "Thessaloniki";
+        model.ShippingCity = null;
+        (await addresses.SaveAsync(id, model, _alice, Ct)).Status.ShouldBe(SaveStatus.Saved);
+
+        var saved = await addresses.GetAsync(id, _alice, Ct);
+        saved!.BillingCity.ShouldBe("Thessaloniki");
+        saved.BillingCountryCode.ShouldBe("GR");
+        saved.HasShipping.ShouldBeFalse();
+        (await _service.SearchAsync(new AccountQuery(ListScope.All, Search: _prefix + "With"), _alice, Ct))
+            .Items.Single().City.ShouldBe("Thessaloniki");
+
+        // A deleted account takes its addresses with it, as far as reads go.
+        await _service.DeleteAsync(id, _alice, Ct);
+        (await addresses.GetAsync(id, _alice, Ct)).ShouldBeNull();
+    }
+
     private async Task<int> TeamIdAsync()
     {
         await using var db = _factory.CreateDbContext();

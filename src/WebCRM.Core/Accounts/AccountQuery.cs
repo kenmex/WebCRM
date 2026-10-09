@@ -28,3 +28,6 @@ public sealed record AccountQuery(
 {
     public const int DefaultPageSize = 25;
 }
+
+/// <summary>An account as offered by the account picker: just enough to show and select.</summary>
+public sealed record AccountPickerItem(int Id, string Name);

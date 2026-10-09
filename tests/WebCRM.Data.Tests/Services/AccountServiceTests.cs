@@ -568,6 +568,48 @@ public class AccountServiceTests : IDisposable
         result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.Website));
     }
 
+    // ---- Account picker ----
+
+    [Fact]
+    public async Task Picker_finds_names_containing_the_text_with_names_starting_with_it_first()
+    {
+        await AddAsync("Zebra Acme");
+        await AddAsync("Acme Corp");
+        await AddAsync("Beta Ltd");
+        await AddAsync("Acme Alpha");
+
+        var items = await _service.SearchPickerAsync("Acme", _alice, cancellationToken: Ct);
+
+        items.Select(i => i.Name).ShouldBe(["Acme Alpha", "Acme Corp", "Zebra Acme"]);
+    }
+
+    [Fact]
+    public async Task Picker_returns_at_most_ten_and_the_first_by_name_for_blank_text()
+    {
+        for (var i = 1; i <= 15; i++)
+        {
+            await AddAsync($"Account {i:00}");
+        }
+
+        var items = await _service.SearchPickerAsync(null, _alice, cancellationToken: Ct);
+
+        items.Count.ShouldBe(10);
+        items[0].Name.ShouldBe("Account 01");
+        (await _service.SearchPickerAsync("Account", _alice, 3, Ct)).Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task Picker_hides_deleted_accounts_and_resolves_a_single_item()
+    {
+        var keep = await AddAsync("Keep Co");
+        var gone = await AddAsync("Gone Co");
+        await _service.DeleteAsync(gone, _alice, Ct);
+
+        (await _service.SearchPickerAsync("Co", _alice, cancellationToken: Ct)).Select(i => i.Name).ShouldBe(["Keep Co"]);
+        (await _service.GetPickerItemAsync(keep, _alice, Ct)).ShouldBe(new AccountPickerItem(keep, "Keep Co"));
+        (await _service.GetPickerItemAsync(gone, _alice, Ct)).ShouldBeNull();
+    }
+
     // ---- Delete ----
 
     [Fact]

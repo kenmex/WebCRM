@@ -176,6 +176,43 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         };
     }
 
+    public async Task<IReadOnlyList<AccountPickerItem>> SearchPickerAsync(
+        string? text, UserContext user, int take = 10, CancellationToken cancellationToken = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(cancellationToken);
+
+        var accounts = db.Accounts.AsNoTracking().VisibleTo(user);
+        var search = text?.Trim();
+        if (!string.IsNullOrEmpty(search))
+        {
+            // Name has the accent-insensitive collation, so LIKE ignores case and accents.
+            accounts = accounts.Where(a => a.Name.Contains(search));
+            return await accounts
+                .OrderBy(a => a.Name.StartsWith(search) ? 0 : 1).ThenBy(a => a.Name).ThenBy(a => a.Id)
+                .Take(Math.Clamp(take, 1, 50))
+                .Select(a => new AccountPickerItem(a.Id, a.Name))
+                .ToListAsync(cancellationToken);
+        }
+
+        return await accounts
+            .OrderBy(a => a.Name).ThenBy(a => a.Id)
+            .Take(Math.Clamp(take, 1, 50))
+            .Select(a => new AccountPickerItem(a.Id, a.Name))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<AccountPickerItem?> GetPickerItemAsync(
+        int id, UserContext user, CancellationToken cancellationToken = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(cancellationToken);
+
+        return await db.Accounts.AsNoTracking()
+            .VisibleTo(user)
+            .Where(a => a.Id == id)
+            .Select(a => new AccountPickerItem(a.Id, a.Name))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     private static async Task<int?> FirstStatusIdAsync(CrmDbContext db, CancellationToken cancellationToken) =>
         await db.AccountStatuses.AsNoTracking()
             .Where(s => s.IsActive)
