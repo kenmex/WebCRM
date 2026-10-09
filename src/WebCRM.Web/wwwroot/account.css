@@ -1,0 +1,143 @@
+/*
+   Minimal styling for the Identity /Account pages (static server rendering).
+   Their markup comes from the official template and uses Bootstrap class names;
+   these rules map those names onto MudBlazor theme variables so the pages fit
+   the app without adding Bootstrap. Scoped to .account-page (AccountLayout).
+*/
+
+/* Layout grid */
+.account-page .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+}
+
+.account-page [class*="col-"] {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+@media (min-width: 960px) {
+    .account-page .col-md-4,
+    .account-page .col-lg-3,
+    .account-page .col-lg-4 { flex: 0 1 calc(33.333% - 16px); }
+    .account-page .col-md-6,
+    .account-page .col-lg-6,
+    .account-page .col-xl-6 { flex: 0 1 calc(50% - 12px); }
+    .account-page .col-lg-9 { flex: 1 1 0; }
+}
+
+.account-page .col-lg-offset-2 { margin-left: 0; }
+
+/* Spacing and utilities */
+.account-page .mb-3 { margin-bottom: 16px; }
+.account-page .mt-2 { margin-top: 8px; }
+.account-page .mx-auto { margin-left: auto; margin-right: auto; }
+.account-page .w-100 { width: 100%; }
+.account-page .h-100 { height: 100%; }
+.account-page .d-flex { display: flex; }
+.account-page .font-weight-bold { font-weight: 700; }
+.account-page .text-danger { color: var(--mud-palette-error); }
+.account-page .text-success { color: var(--mud-palette-success); }
+.account-page .text-info { color: var(--mud-palette-info); }
+.account-page .text-secondary { color: var(--mud-palette-text-secondary); }
+
+.account-page h1 { font-size: 1.75rem; font-weight: 500; margin-bottom: 16px; }
+.account-page h2 { font-size: 1.25rem; font-weight: 500; margin-bottom: 12px; }
+.account-page h3 { font-size: 1.1rem; font-weight: 500; margin-bottom: 8px; }
+.account-page p { margin-bottom: 12px; }
+.account-page hr { border: 0; border-top: 1px solid var(--mud-palette-lines-default); margin: 16px 0; }
+
+/* Forms: the template puts the label after the input (floating labels); show it above instead. */
+.account-page .form-floating {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 4px;
+}
+
+.account-page .form-label,
+.account-page .control-label {
+    font-size: 0.875rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+.account-page .form-control {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    font: inherit;
+    color: var(--mud-palette-text-primary);
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+}
+
+.account-page .form-control:focus {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: -1px;
+}
+
+.account-page .form-control::placeholder { color: transparent; }
+
+.account-page .checkbox label { display: inline-flex; align-items: center; gap: 8px; }
+.account-page .form-check-input { width: 18px; height: 18px; accent-color: var(--mud-palette-primary); }
+
+.account-page .input-group { display: flex; align-items: stretch; }
+.account-page .input-group .form-control { flex: 1 1 auto; }
+.account-page .input-group-text { display: flex; align-items: center; padding: 0 12px; }
+
+/* Buttons */
+.account-page .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 16px;
+    font: inherit;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border: 0;
+    border-radius: var(--mud-default-borderradius);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.account-page .btn-primary { background: var(--mud-palette-primary); color: var(--mud-palette-primary-text); }
+.account-page .btn-primary:hover { background: var(--mud-palette-primary-darken); }
+.account-page .btn-danger { background: var(--mud-palette-error); color: var(--mud-palette-error-text); }
+.account-page .btn-danger:hover { background: var(--mud-palette-error-darken); }
+.account-page .btn-link { background: none; color: var(--mud-palette-primary); text-transform: none; padding: 0; min-height: 0; }
+
+/* Alerts */
+.account-page .alert {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: var(--mud-default-borderradius);
+    border-left: 4px solid currentColor;
+}
+
+.account-page .alert-success { color: var(--mud-palette-success); background: var(--mud-palette-success-hover); }
+.account-page .alert-info { color: var(--mud-palette-info); background: var(--mud-palette-info-hover); }
+.account-page .alert-warning { color: var(--mud-palette-warning); background: var(--mud-palette-warning-hover); }
+.account-page .alert-danger { color: var(--mud-palette-error); background: var(--mud-palette-error-hover); }
+
+/* Manage section nav (ManageNavMenu) */
+.account-page .nav { list-style: none; padding: 0; margin: 0; display: flex; }
+.account-page .flex-column { flex-direction: column; }
+.account-page .nav-link {
+    display: block;
+    padding: 10px 12px;
+    color: var(--mud-palette-text-primary);
+    text-decoration: none;
+    border-radius: var(--mud-default-borderradius);
+}
+.account-page .nav-link:hover { background: var(--mud-palette-action-default-hover); }
+.account-page .nav-link.active { background: var(--mud-palette-primary); color: var(--mud-palette-primary-text); }
+
+/* Tables (external logins, recovery codes) */
+.account-page .table { width: 100%; border-collapse: collapse; }
+.account-page .table td,
+.account-page .table th { padding: 8px; border-bottom: 1px solid var(--mud-palette-lines-default); text-align: left; }
+
+.account-page a:not(.btn):not(.nav-link) { color: var(--mud-palette-primary); }

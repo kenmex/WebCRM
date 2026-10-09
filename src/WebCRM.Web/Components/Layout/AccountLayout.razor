@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+@* Layout for the Identity /Account pages. They use static server rendering (no circuit),
+   so this layout has no interactive parts: no drawer toggle, no theme switch. *@
+
+<MudThemeProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudLink Href="" Color="Color.Inherit" Underline="Underline.None" Typo="Typo.h6">WebCRM</MudLink>
+    </MudAppBar>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-6 account-page">
+            <MudPaper Outlined="true" Class="pa-6">
+                @Body
+            </MudPaper>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
