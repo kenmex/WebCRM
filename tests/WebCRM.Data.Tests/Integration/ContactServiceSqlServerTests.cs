@@ -104,6 +104,10 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
         return contact.Id;
     }
 
+    // The tests in this class share one database, so an email must be unique per test: the duplicate-email warning
+    // would otherwise depend on which test ran first.
+    private string Email(string local) => $"{local}.{_prefix.Trim().ToLowerInvariant()}@example.com";
+
     private ContactQuery All() => new(ListScope.All, Search: _prefix);
 
     // ---- The list query ----
@@ -114,7 +118,7 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
         await EnsureReferenceDataAsync();
         var acme = await AddAccountAsync("Acme");
         var zeta = await AddAccountAsync("Zeta", Bob);
-        var email = $"anna.{Guid.NewGuid():N}@example.com";
+        var email = Email("anna");
         var anna = await AddContactAsync("Anna", _prefix + "Smith", acme, email: email, jobTitle: "Buyer");
         await AddContactAsync("Bob", _prefix + "Jones", zeta, Bob);
 
@@ -154,7 +158,7 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var acme = await AddAccountAsync("Acme");
-        await AddContactAsync("Anna", _prefix + "Smith", acme, email: "anna@example.com");
+        await AddContactAsync("Anna", _prefix + "Smith", acme, email: Email("anna"));
         var manager = new UserContext(Alice, RoleNames.Manager, TeamId: await TeamIdAsync());
 
         foreach (var scope in Enum.GetValues<ListScope>())
@@ -172,7 +176,7 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var acme = await AddAccountAsync("Acme");
-        await AddContactAsync("Anna", _prefix + "Mine", acme, Alice, email: "mine@example.com");
+        await AddContactAsync("Anna", _prefix + "Mine", acme, Alice, email: Email("mine"));
         await AddContactAsync("Bob", _prefix + "Bobs", acme, Bob);
 
         (await _service.SearchAsync(new ContactQuery(ListScope.Mine, Search: _prefix), _alice, Ct))
@@ -215,10 +219,10 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var account = await AddAccountAsync("Αθήνα Συμβουλευτική");
-        await AddContactAsync("Μαρία", "Παπαδόπουλος", account, email: "maria@example.gr");
+        await AddContactAsync("Μαρία", "Παπαδόπουλος", account, email: Email("maria"));
 
         // D3: no accents, different case.
-        foreach (var text in new[] { "ΜΑΡΙΑ ΠΑΠΑΔΟΠΟΥΛΟΣ", "παπαδοπουλος", "αθηνα συμβ", "MARIA@EXAMPLE.GR" })
+        foreach (var text in new[] { "ΜΑΡΙΑ ΠΑΠΑΔΟΠΟΥΛΟΣ", "παπαδοπουλος", "αθηνα συμβ", Email("maria").ToUpperInvariant() })
         {
             var result = await _service.SearchAsync(new ContactQuery(ListScope.All, Search: text), _alice, Ct);
 
@@ -277,13 +281,13 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
         model.OwnerId.ShouldBe(Bob);
         model.FirstName = "Anna";
         model.LastName = _prefix + "Smith";
-        model.Email = "  Anna@Example.COM ";
+        model.Email = "  " + Email("Anna").ToUpperInvariant() + " ";
 
         var saved = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
         saved.Status.ShouldBe(SaveStatus.Saved);
         var detail = await _service.GetAsync(saved.Id, _alice, Ct);
-        detail!.Email.ShouldBe("anna@example.com");
+        detail!.Email.ShouldBe(Email("anna"));
         detail.FullName.ShouldBe("Anna " + _prefix + "Smith");
         detail.OwnerName.ShouldBe("Bob");
         detail.RowVersion.ShouldNotBeEmpty();
@@ -294,13 +298,13 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var acme = await AddAccountAsync("Acme");
-        await AddContactAsync("Anna", _prefix + "First", acme, email: "dup@example.com");
+        await AddContactAsync("Anna", _prefix + "First", acme, email: Email("dup"));
         var model = new ContactEditModel
         {
             LastName = _prefix + "Second",
             AccountId = acme,
             OwnerId = Alice,
-            Email = "DUP@example.com",
+            Email = Email("dup").ToUpperInvariant(),
         };
 
         var warned = await _service.SaveAsync(model, _alice, cancellationToken: Ct);

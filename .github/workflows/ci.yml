@@ -55,9 +55,10 @@ jobs:
         if: failure()
         run: |
           if [ -f test.log ]; then
-            msg=$(grep -E -A3 '^[[:space:]]*failed ' test.log | head -80 | sed 's/%/%25/g' | tr '\n' '|' | cut -c1-3800)
+            # The test runner colours its output; strip the escape codes so the patterns match.
+            sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' test.log > test.plain.log
+            msg=$(grep -E -A3 '^[[:space:]]*failed ' test.plain.log | head -80 | sed 's/%/%25/g' | tr '\n' '|' | cut -c1-3800)
             echo "::error title=Failed tests::${msg:-none matched}"
-            tail -n 60 test.log | sed 's/%/%25/g' | tr '\n' '|' | cut -c1-3800 | { read -r tailmsg; echo "::error title=End of test log::${tailmsg}"; }
           else
             echo "::error title=Failed tests::test.log was not written"
           fi
