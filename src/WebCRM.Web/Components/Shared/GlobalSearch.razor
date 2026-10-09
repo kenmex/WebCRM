@@ -1,0 +1,250 @@
+@inherits PhoneAwareComponentBase
+@using Microsoft.Extensions.Logging
+@using WebCRM.Core.Search
+@using WebCRM.Core.Users
+@inject ISearchService Search
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject ILogger<GlobalSearch> Logger
+
+@* The top-bar search (docs/page-spec.md, App shell): type 2 or more characters, the top 5 hits per type drop down,
+   Enter with nothing highlighted opens the full results page, an arrow key plus Enter (or a click) opens a record.
+   On a phone it is an icon that opens a full-width bar. *@
+
+@if (!ViewportKnown)
+{
+    @* wait for the browser size, so a phone never flashes the desktop field *@
+}
+else if (!IsPhone)
+{
+    <div class="ml-6" style="width: min(420px, 40vw);">@SearchBox</div>
+}
+else
+{
+    <MudIconButton Icon="@Icons.Material.Filled.Search" Color="Color.Inherit" aria-label="Search"
+                   OnClick="OpenPhoneBar" Class="ml-auto" />
+    @if (_phoneBarOpen)
+    {
+        <MudPaper Elevation="4" Square="true" Class="d-flex align-center pa-2"
+                  Style="position: fixed; top: 0; left: 0; right: 0; z-index: 1400;">
+            <div style="flex: 1 1 auto;">@SearchBox</div>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close search" OnClick="ClosePhoneBar" />
+        </MudPaper>
+    }
+}
+
+@code {
+    private RenderFragment SearchBox => @<div style="position: relative;" role="search">
+        <MudTextField T="string" Value="@_text" ValueChanged="OnTextChangedAsync" Immediate="true" DebounceInterval="250"
+                      Placeholder="Search accounts and contacts" aria-label="Search" Variant="Variant.Filled" Margin="Margin.Dense"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                      AutoFocus="@IsPhone" OnKeyDown="OnKeyDownAsync" OnBlur="OnBlurAsync" Underline="false" />
+        <MudPopover Open="@_open" Fixed="false" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft"
+                    RelativeWidth="DropdownWidth.Relative" MaxHeight="480" Elevation="8">
+            @ResultsPanel
+        </MudPopover>
+    </div>;
+
+    private RenderFragment ResultsPanel => @<div role="listbox" aria-label="Search results" data-search-results="true">
+        @if (_error is not null)
+        {
+            <MudText Class="pa-3" Color="Color.Error">@_error</MudText>
+        }
+        else if (_loading && _results is null)
+        {
+            <MudText Class="pa-3" Color="Color.Secondary">Searching...</MudText>
+        }
+        else if (_results is { } results)
+        {
+            @if (results.TotalCount == 0)
+            {
+                <MudText Class="pa-3" Color="Color.Secondary" role="status">No results for &ldquo;@results.Query&rdquo;.</MudText>
+            }
+            else
+            {
+                @foreach (var group in results.Groups.Where(g => g.Hits.Count > 0))
+                {
+                    <MudText Typo="Typo.overline" Class="px-3 pt-2" Color="Color.Secondary">@SearchLinks.Label(group.Type)</MudText>
+                    @foreach (var hit in group.Hits)
+                    {
+                        var index = _flat.IndexOf(hit);
+                        <div role="option" aria-selected="@(index == _active ? "true" : "false")" data-search-hit="@SearchLinks.Record(hit)"
+                             class="@("mud-list-item mud-list-item-clickable px-3 py-1" + (index == _active ? " mud-selected-item" : ""))"
+                             style="cursor: pointer;" @onmousedown="() => OpenHit(hit)" @onmousedown:preventDefault="true">
+                            <MudIcon Icon="@SearchLinks.Icon(hit.Type)" Size="Size.Small" Class="mr-3" />
+                            <div>
+                                <MudText Typo="Typo.body2">@hit.Title</MudText>
+                                @if (hit.Subtitle is not null)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@hit.Subtitle</MudText>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (group.TotalCount > group.Hits.Count)
+                    {
+                        <div role="link" data-search-see-all="@group.Type" class="px-3 py-1" style="cursor: pointer;"
+                             @onmousedown="() => Go(SearchLinks.List(group.Type, results.Query), clear: true)" @onmousedown:preventDefault="true">
+                            <MudText Typo="Typo.body2" Color="Color.Primary">
+                                See all @group.TotalCount @SearchLinks.Label(group.Type).ToLowerInvariant() in the list
+                            </MudText>
+                        </div>
+                    }
+                }
+
+                <MudDivider Class="mt-2" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Press Enter to see all results</MudText>
+            }
+        }
+    </div>;
+
+    private CancellationTokenSource? _cts;
+    private SearchResults? _results;
+    private List<SearchHit> _flat = [];
+    private string _text = string.Empty;
+    private string? _error;
+    private int _active = -1;
+    private bool _open;
+    private bool _loading;
+    private bool _phoneBarOpen;
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    private async Task OnTextChangedAsync(string? text)
+    {
+        _text = text ?? string.Empty;
+        _cts?.Cancel();
+        _active = -1;
+        _error = null;
+
+        if (SearchRules.Normalize(_text) is not { } term)
+        {
+            _results = null;
+            _flat = [];
+            _open = false;
+            _loading = false;
+            return;
+        }
+
+        var cts = _cts = new CancellationTokenSource();
+        _open = true;
+        _loading = true;
+        try
+        {
+            var user = await UserContexts.GetAsync(cts.Token);
+            var results = user is null ? SearchResults.Empty(term) : await Search.SearchAsync(term, 5, user, cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _results = results;
+                _flat = [.. results.Groups.SelectMany(g => g.Hits)];
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Global search failed.");
+            if (!cts.IsCancellationRequested)
+            {
+                _error = "Search failed. Please try again.";
+            }
+        }
+        finally
+        {
+            // Runs after an await, outside any event handler, so Blazor does not re-render by itself.
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when _flat.Count > 0:
+                _open = true;
+                _active = (_active + 1) % _flat.Count;
+                break;
+
+            case "ArrowUp" when _flat.Count > 0:
+                _open = true;
+                _active = _active <= 0 ? _flat.Count - 1 : _active - 1;
+                break;
+
+            case "Enter":
+                if (_open && _active >= 0 && _active < _flat.Count)
+                {
+                    OpenHit(_flat[_active]);
+                }
+                else if (SearchRules.Normalize(_text) is { } term)
+                {
+                    Go(SearchLinks.ResultsPage(term), clear: false);
+                }
+
+                break;
+
+            case "Escape":
+                _open = false;
+                _active = -1;
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // Clicking a result takes focus away from the box first; closing on blur would remove the result before the click
+    // lands, which is why results react to mouse-down instead.
+    private Task OnBlurAsync(FocusEventArgs e)
+    {
+        _open = false;
+        _active = -1;
+        return Task.CompletedTask;
+    }
+
+    private void OpenHit(SearchHit hit) => Go(SearchLinks.Record(hit), clear: true);
+
+    private void Go(string href, bool clear)
+    {
+        _open = false;
+        _active = -1;
+        _phoneBarOpen = false;
+        if (clear)
+        {
+            _text = string.Empty;
+            _results = null;
+            _flat = [];
+        }
+
+        Navigation.NavigateTo(href);
+    }
+
+    private void OpenPhoneBar() => _phoneBarOpen = true;
+
+    private void ClosePhoneBar()
+    {
+        _phoneBarOpen = false;
+        _open = false;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(() =>
+        {
+            _open = false;
+            _phoneBarOpen = false;
+            StateHasChanged();
+        });
+
+    public override async ValueTask DisposeAsync()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        await base.DisposeAsync();
+    }
+}

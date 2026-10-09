@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Lookups;
+using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 using WebCRM.Data.Services;
 
@@ -17,6 +18,7 @@ public static class DataServiceCollectionExtensions
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IContactService, ContactService>();
         services.AddScoped<IAccountAddressService, AccountAddressService>();
+        services.AddScoped<ISearchService, SearchService>();
         return services;
     }
 }
