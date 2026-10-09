@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
@@ -59,5 +60,17 @@ public class CrmDbContext(DbContextOptions<CrmDbContext> options) : IdentityDbCo
         // Identity tables first, then our configurations can extend them.
         base.OnModelCreating(builder);
         builder.ApplyConfigurationsFromAssembly(typeof(CrmDbContext).Assembly);
+
+        // Soft delete: rows with IsActive = 0 vanish from every query. Admin views that need them
+        // (restore, Phase 5) use IgnoreQueryFilters(). Lookups keep their own IsActive meaning
+        // (hidden from dropdowns only), so they are not filtered.
+        foreach (var entityType in builder.Model.GetEntityTypes()
+                     .Where(t => t.BaseType is null && typeof(BaseEntity).IsAssignableFrom(t.ClrType))
+                     .ToList())
+        {
+            var entity = Expression.Parameter(entityType.ClrType, "e");
+            var isActive = Expression.Lambda(Expression.Property(entity, nameof(BaseEntity.IsActive)), entity);
+            builder.Entity(entityType.ClrType).HasQueryFilter(isActive);
+        }
     }
 }

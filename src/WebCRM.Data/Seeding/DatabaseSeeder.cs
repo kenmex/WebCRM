@@ -44,6 +44,7 @@ public static class DatabaseSeeder
         await EnsureSystemUserAsync(userManager, logger);
         await EnsureRolesAsync(roleManager, logger);
         await EnsureCompanySettingAsync(db, logger, cancellationToken);
+        await EnsureLookupsAsync(db, logger, cancellationToken);
         await EnsureFirstAdminAsync(userManager, provider.GetRequiredService<IConfiguration>(), logger);
     }
 
@@ -96,6 +97,43 @@ public static class DatabaseSeeder
         db.CompanySettings.Add(new CompanySetting { CompanyName = DefaultCompanyName });
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Seeded CompanySetting.");
+    }
+
+    // Starter values so the dropdowns are usable; Admin edits them in the lookups page (P22) later.
+    private static readonly string[] AccountStatusNames = ["Prospect", "Active", "Inactive"];
+
+    private static readonly string[] IndustryNames =
+    [
+        "Construction", "Education", "Energy", "Finance", "Healthcare", "Hospitality", "Manufacturing",
+        "Retail", "Technology", "Transport and logistics", "Other",
+    ];
+
+    private static async Task EnsureLookupsAsync(CrmDbContext db, ILogger logger, CancellationToken ct)
+    {
+        var added = await AddMissingAsync(db.AccountStatuses, AccountStatusNames, ct)
+            + await AddMissingAsync(db.Industries, IndustryNames, ct);
+        if (added > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded {Count} lookup values.", added);
+        }
+    }
+
+    private static async Task<int> AddMissingAsync<T>(DbSet<T> set, string[] names, CancellationToken ct)
+        where T : Lookup, new()
+    {
+        var existing = await set.Select(l => l.Name).ToListAsync(ct);
+        var added = 0;
+        for (var i = 0; i < names.Length; i++)
+        {
+            if (!existing.Contains(names[i], StringComparer.OrdinalIgnoreCase))
+            {
+                set.Add(new T { Name = names[i], SortOrder = (i + 1) * 10 });
+                added++;
+            }
+        }
+
+        return added;
     }
 
     private static async Task EnsureFirstAdminAsync(

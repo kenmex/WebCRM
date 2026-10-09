@@ -20,6 +20,9 @@ public class AddressConfiguration : IEntityTypeConfiguration<Address>
 
         builder.HasOne(e => e.Account).WithMany(a => a.Addresses).HasForeignKey(e => e.AccountId).OnDelete(DeleteBehavior.Restrict);
 
+        // Same soft-delete filter as the account it belongs to.
+        builder.HasQueryFilter(e => e.Account.IsActive);
+
         // One billing and one shipping address per account.
         builder.HasIndex(e => new { e.AccountId, e.AddressType }).IsUnique();
         builder.HasIndex(e => e.City);
