@@ -315,7 +315,7 @@ public class AccountServiceTests : IDisposable
         (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
 
         var second = Form("Second");
-        second.VatNumber = "094 259 216"; // the same number, written differently
+        second.VatNumber = "el 094.259-216"; // the same number, written differently
         var result = await _service.SaveAsync(second, _alice, cancellationToken: Ct);
 
         result.Status.ShouldBe(AccountSaveStatus.Invalid);
@@ -467,22 +467,68 @@ public class AccountServiceTests : IDisposable
         saved.Website.ShouldBe("https://mexdb.com/about");
     }
 
-    [Fact]
-    public async Task Save_stores_a_bare_9_digit_greek_afm_with_the_EL_prefix()
+    private async Task SetCompanyCountryAsync(string? countryCode)
     {
+        await using var db = _factory.CreateDbContext();
+        db.CompanySettings.Add(new CompanySetting { CompanyName = "Test Co", DefaultCountryCode = countryCode });
+        await db.SaveChangesAsync(Ct);
+    }
+
+    [Fact]
+    public async Task A_greek_company_stores_a_bare_9_digit_number_as_an_EL_number_and_checks_its_check_digit()
+    {
+        await SetCompanyCountryAsync("GR");
         var model = Form("Acme");
-        model.VatNumber = "094259216";
+        model.VatNumber = "094 259 216";
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
         (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("EL094259216");
+
+        var wrong = Form("Wrong");
+        wrong.VatNumber = "123456789";
+        var rejected = await _service.SaveAsync(wrong, _alice, cancellationToken: Ct);
+        rejected.Status.ShouldBe(AccountSaveStatus.Invalid);
+        rejected.FieldErrors![nameof(AccountEditModel.VatNumber)].ShouldBe(VatNumberRules.InvalidGreekCheckDigitMessage);
     }
 
     [Theory]
-    [InlineData("12345", VatNumberRules.InvalidMessage)]
+    [InlineData(null)]
+    [InlineData("US")]
+    public async Task A_company_outside_Greece_stores_a_bare_9_digit_number_as_typed(string? country)
+    {
+        await SetCompanyCountryAsync(country);
+        var model = Form("Acme Inc");
+        model.VatNumber = "12-3456789"; // a US EIN: 9 digits, and it would fail the Greek check digit
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("123456789");
+    }
+
+    [Theory]
+    [InlineData("GB 123 4567 89", "GB123456789")]
+    [InlineData("CHE-123.456.789 MWST", "CHE123456789MWST")]
+    [InlineData("no 123 456 785 mva", "NO123456785MVA")]
+    [InlineData("de 123 456 789", "DE123456789")]
+    public async Task Foreign_tax_ids_are_normalised_and_saved(string typed, string stored)
+    {
+        var model = Form("Foreign Co");
+        model.VatNumber = typed;
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe(stored);
+    }
+
+    [Theory]
+    [InlineData("123", VatNumberRules.InvalidMessage)]
     [InlineData("EL12345", VatNumberRules.InvalidGreekMessage)]
-    [InlineData("123456789", VatNumberRules.InvalidGreekCheckDigitMessage)]
-    [InlineData("DE 12 34 56 78 90 12 34", VatNumberRules.InvalidMessage)]
+    [InlineData("EL123456789", VatNumberRules.InvalidGreekCheckDigitMessage)]
+    [InlineData("DE 12 34 56 78 90 12 34 56 78 90", VatNumberRules.InvalidMessage)]
+    [InlineData("DE123456789€", VatNumberRules.InvalidMessage)]
     public async Task Save_rejects_an_invalid_vat_number_with_a_clear_message_on_that_field(string vat, string message)
     {
         var model = Form("Acme");

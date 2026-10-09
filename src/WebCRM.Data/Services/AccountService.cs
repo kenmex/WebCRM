@@ -191,9 +191,14 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         options ??= new AccountSaveOptions();
         var errors = new Dictionary<string, string>();
 
-        // Normalise first, so validation and the uniqueness checks see what will be stored: "el 123.456-789"
-        // and "EL123456789" are the same VAT number, and "mexdb.com" becomes "https://mexdb.com".
-        model.VatNumber = VatNumberRules.Normalize(model.VatNumber);
+        await using var db = await factory.CreateDbContextAsync(cancellationToken);
+
+        // Normalise first, so validation and the uniqueness checks see what will be stored: "el 094.259-216"
+        // and "EL094259216" are the same Tax ID, and "mexdb.com" becomes "https://mexdb.com". A bare 9-digit
+        // number is a Greek ΑΦΜ only when the company's default country is Greece (a US EIN is 9 digits too).
+        var defaultCountry = await db.CompanySettings.AsNoTracking()
+            .Select(c => c.DefaultCountryCode).FirstOrDefaultAsync(cancellationToken);
+        model.VatNumber = VatNumberRules.Normalize(model.VatNumber, defaultCountry);
         model.Website = WebsiteRules.Normalize(model.Website);
 
         // The server validates again; the form's checks are only for the user's convenience.
@@ -225,8 +230,6 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
         var vat = model.VatNumber;
 
-        await using var db = await factory.CreateDbContextAsync(cancellationToken);
-
         var isNew = model.Id == 0;
         Account? entity = null;
         if (!isNew)
@@ -247,7 +250,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
         if (vat is not null && await db.Accounts.AnyAsync(a => a.Id != model.Id && a.VatNumber == vat, cancellationToken))
         {
-            errors[nameof(AccountEditModel.VatNumber)] = "An account with this VAT number already exists.";
+            errors[nameof(AccountEditModel.VatNumber)] = "An account with this VAT / Tax ID already exists.";
         }
 
         if (errors.Count > 0)
@@ -303,7 +306,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             return Invalid(new Dictionary<string, string>
             {
                 [field] = field == nameof(AccountEditModel.VatNumber)
-                    ? "An account with this VAT number already exists."
+                    ? "An account with this VAT / Tax ID already exists."
                     : "An account with this name already exists.",
             });
         }

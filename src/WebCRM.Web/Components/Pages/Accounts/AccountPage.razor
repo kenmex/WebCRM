@@ -64,7 +64,7 @@ else
             @if (_detail is not null)
             {
                 <MudGrid Spacing="3">
-                    <MudItem xs="12" sm="6" md="4"><ReadField Label="VAT number" Value="@_detail.VatNumber" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="VAT / Tax ID" Value="@_detail.VatNumber" /></MudItem>
                     <MudItem xs="12" sm="6" md="4"><ReadField Label="Industry" Value="@_detail.IndustryName" /></MudItem>
                     <MudItem xs="12" sm="6" md="4">
                         <ReadField Label="Phone">
@@ -103,7 +103,7 @@ else
                                       Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" MaxLength="200" />
                     </MudItem>
                     <MudItem xs="12" md="4">
-                        <MudTextField @bind-Value="_model.VatNumber" For="@(() => _model.VatNumber)" Label="VAT number"
+                        <MudTextField @bind-Value="_model.VatNumber" For="@(() => _model.VatNumber)" Label="VAT / Tax ID"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" />
                     </MudItem>
                     <MudItem xs="12" sm="6" md="4">

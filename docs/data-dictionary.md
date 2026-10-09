@@ -20,7 +20,7 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
 | Name | nvarchar(200) AI | no |  | Unique among active accounts; similar names warned |
-| VatNumber | nvarchar(20) | yes |  | Stored normalised: upper case, no spaces, dots or dashes. Format: 2-letter country prefix + 2 to 12 letters or digits; `EL` + exactly 9 digits for Greece, and the ΑΦΜ check digit must be correct (first 8 digits weighted 256 down to 2, sum mod 11 mod 10 = 9th digit; 000000000 is rejected). A bare 9-digit number is a Greek ΑΦΜ and is stored as `EL` + the digits; a Greek-letter `ΕΛ` prefix is stored as `EL`. Unique when filled, among active accounts (compared after normalising) |
+| VatNumber | nvarchar(20) | yes |  | Shown as "VAT / Tax ID"; works for any country. Stored normalised: upper case, no spaces, dots or dashes; 4 to 20 letters or digits (check constraint `CK_Accounts_VatNumber`, binary collation so lower case is rejected). No prefix rule, except `EL` (Greece): exactly 9 digits and a correct ΑΦΜ check digit (first 8 digits weighted 256 down to 2, sum mod 11 mod 10 = 9th digit; 000000000 rejected; the check digit is checked in code, the constraint checks the shape). A Greek-letter `ΕΛ` prefix is stored as `EL`. A bare 9-digit number becomes `EL` + digits only when `CompanySetting.DefaultCountryCode` is `GR`; otherwise it is stored as typed (a US EIN is 9 digits too). Unique when filled, among active accounts (compared after normalising) |
 | IndustryId | int | yes |  | FK Industry |
 | AccountStatusId | int | no | first status | FK AccountStatus |
 | Phone | nvarchar(30) | yes |  |  |

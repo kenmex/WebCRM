@@ -239,6 +239,61 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         await Should.ThrowAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
     }
 
+    // ---- CK_Accounts_VatNumber: the database enforces the format even when the service is bypassed ----
+
+    [Theory]
+    [InlineData("EL094259216")]
+    [InlineData("DE123456789")]
+    [InlineData("123456789")] // US EIN: no prefix
+    [InlineData("GB987654321")] // UK
+    [InlineData("CHE987654321MWST")] // Switzerland
+    [InlineData("NO987654325MVA")] // Norway
+    [InlineData("1234")] // shortest: 4
+    [InlineData("A2345678901234567890")] // longest: 20
+    [InlineData(null)]
+    public async Task The_database_accepts_a_well_formed_vat_number_or_none(string? vat) =>
+        (await TryInsertWithVatAsync(vat)).ShouldBeNull();
+
+    [Theory]
+    [InlineData("de555555555")] // lower case: the database collation is case-insensitive, the check must not be
+    [InlineData("DE12345678a")]
+    [InlineData("EL12345678")] // 8 digits
+    [InlineData("EL1234567890")] // 10 digits
+    [InlineData("ELA23456789")] // letter after EL
+    [InlineData("ELECTRO12345")] // anything starting with EL is held to the Greek rule
+    [InlineData("el094259217")] // lower case Greek prefix
+    [InlineData("DE1")] // 3 characters
+    [InlineData("DE12 3456")] // space
+    [InlineData("DE-123456")] // dash
+    [InlineData("ΕΛ123456789")] // Greek letters
+    public async Task The_database_rejects_a_malformed_vat_number(string vat) =>
+        (await TryInsertWithVatAsync(vat)).ShouldNotBeNull().ShouldContain("CK_Accounts_VatNumber");
+
+    private async Task<string?> TryInsertWithVatAsync(string? vat)
+    {
+        await EnsureReferenceDataAsync();
+        var (statusId, _) = await LookupIdsAsync();
+
+        await using var db = _factory.CreateDbContext();
+        db.Accounts.Add(new Account
+        {
+            Name = _prefix + Guid.NewGuid().ToString("N"),
+            OwnerId = Alice,
+            AccountStatusId = statusId,
+            VatNumber = vat,
+        });
+
+        try
+        {
+            await db.SaveChangesAsync(Ct);
+            return null;
+        }
+        catch (DbUpdateException ex)
+        {
+            return ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
     [Fact]
     public async Task A_deleted_accounts_name_can_be_reused()
     {

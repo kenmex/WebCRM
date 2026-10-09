@@ -4,18 +4,25 @@ using System.Text;
 namespace WebCRM.Core.Accounts;
 
 /// <summary>
-/// VAT number rule (docs/data-dictionary.md, Account.VatNumber). The stored form is normalised:
-/// upper case, without spaces, dots or dashes, and always with the 2-letter country prefix.
+/// "VAT / Tax ID" rule (docs/data-dictionary.md, Account.VatNumber). Works for clients in any country:
+/// everything is normalised (upper case, no spaces, dots or dashes) and must be 4 to 20 letters or digits;
+/// only numbers starting with EL (Greece) are checked strictly: 9 digits and the ΑΦΜ check digit.
 /// </summary>
 public static class VatNumberRules
 {
+    public const int MinLength = 4;
+
+    public const int MaxLength = 20;
+
     public const string GreekPrefix = "EL";
 
+    public const string GreekCountryCode = "GR";
+
     public const string InvalidMessage =
-        "Enter a VAT number as a 2-letter country code followed by 2 to 12 letters or digits, e.g. EL094259216 or DE123456789.";
+        "Enter a VAT / Tax ID of 4 to 20 letters or digits. Spaces, dots and dashes are ignored.";
 
     public const string InvalidGreekMessage =
-        "Greek VAT numbers (EL) have exactly 9 digits, e.g. EL094259216 or just 094259216.";
+        "Greek VAT numbers (EL) have exactly 9 digits, e.g. EL094259216.";
 
     public const string InvalidGreekCheckDigitMessage =
         "This Greek VAT number (ΑΦΜ) is not valid: its check digit does not match. Please check the number.";
@@ -24,10 +31,12 @@ public static class VatNumberRules
     private const string GreekLettersPrefix = "ΕΛ";
 
     /// <summary>
-    /// Upper case, strips whitespace, dots and dashes, turns a Greek-letter "ΕΛ" prefix into "EL", and adds
-    /// "EL" to a bare 9-digit Greek ΑΦΜ. Blank input gives null. Does not check the format; see <see cref="Validate"/>.
+    /// Upper case, strips whitespace, dots and dashes, and turns a Greek-letter "ΕΛ" prefix into "EL". A bare
+    /// 9-digit number becomes an EL number only when <paramref name="defaultCountryCode"/> is GR: elsewhere it is
+    /// stored as typed (a US EIN has 9 digits too). Blank input gives null. Does not check the format; see
+    /// <see cref="Validate"/>.
     /// </summary>
-    public static string? Normalize(string? input)
+    public static string? Normalize(string? input, string? defaultCountryCode = null)
     {
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -56,8 +65,8 @@ public static class VatNumberRules
             value = GreekPrefix + value[GreekLettersPrefix.Length..];
         }
 
-        // A bare 9-digit number is a Greek ΑΦΜ.
-        return value.Length == 9 && value.All(char.IsAsciiDigit) ? GreekPrefix + value : value;
+        var greekCompany = string.Equals(defaultCountryCode, GreekCountryCode, StringComparison.OrdinalIgnoreCase);
+        return greekCompany && value.Length == 9 && value.All(char.IsAsciiDigit) ? GreekPrefix + value : value;
     }
 
     /// <summary>
@@ -100,16 +109,17 @@ public static class VatNumberRules
             return IsValidGreekAfm(normalized[2..]) ? null : InvalidGreekCheckDigitMessage;
         }
 
-        var valid = normalized.Length is >= 4 and <= 14
-            && char.IsAsciiLetterUpper(normalized[0])
-            && char.IsAsciiLetterUpper(normalized[1])
-            && normalized.Skip(2).All(c => char.IsAsciiLetterUpper(c) || char.IsAsciiDigit(c));
+        var valid = normalized.Length is >= MinLength and <= MaxLength
+            && normalized.All(c => char.IsAsciiLetterUpper(c) || char.IsAsciiDigit(c));
 
         return valid ? null : InvalidMessage;
     }
 }
 
-/// <summary>Validates a VAT number after normalising it. Empty is valid.</summary>
+/// <summary>
+/// Validates a VAT / Tax ID after normalising it. Empty is valid. The form cannot know the company's default
+/// country, so a bare 9-digit number passes here; the service normalises with the country and validates again.
+/// </summary>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class VatNumberAttribute : ValidationAttribute
 {
