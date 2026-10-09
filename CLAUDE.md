@@ -49,4 +49,6 @@ Per the Architecture section of `docs/rev2-plan.md`, using `WebCRM.*` names:
 - Run `dotnet build` after changes and fix errors before reporting done.
 - I may have Visual Studio open and debugging; if a build fails on locked files, tell me rather than retrying.
 - Small commits with clear messages.
+- After each commit, push to origin.
+- Verify pages with HTTP requests (curl/Invoke-WebRequest) only. Never launch or automate a browser; I check the UI myself.
 - Never use em dashes in any text you write.
