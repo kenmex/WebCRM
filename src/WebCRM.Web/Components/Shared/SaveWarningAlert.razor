@@ -1,0 +1,24 @@
+@* The "save anyway" banner: a save came back with a warning (similar account name, duplicate email). *@
+
+@if (Warning is not null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">
+        <MudStack Spacing="2">
+            <MudText>
+                @Warning.Message@(Warning.Items.Count > 0 ? ": " + string.Join(", ", Warning.Items) : "").
+            </MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small" OnClick="OnAccept">Save anyway</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="OnDismiss">Go back and change it</MudButton>
+            </MudStack>
+        </MudStack>
+    </MudAlert>
+}
+
+@code {
+    [Parameter] public SaveWarning? Warning { get; set; }
+
+    [Parameter] public EventCallback OnAccept { get; set; }
+
+    [Parameter] public EventCallback OnDismiss { get; set; }
+}

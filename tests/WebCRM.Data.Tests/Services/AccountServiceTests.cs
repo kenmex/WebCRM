@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using WebCRM.Core.Accounts;
@@ -264,7 +265,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
         var saved = await _service.GetAsync(result.Id, _alice, cancellationToken: Ct);
         saved!.Name.ShouldBe("Acme");
         saved.VatNumber.ShouldBeNull();
@@ -280,7 +281,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors!.Keys.ShouldContain(nameof(AccountEditModel.Name));
         result.FieldErrors.Keys.ShouldContain(nameof(AccountEditModel.Website));
     }
@@ -292,7 +293,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(Form("Acme"), _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.Name));
     }
 
@@ -304,7 +305,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(Form("Acme"), _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -312,13 +313,13 @@ public class AccountServiceTests : IDisposable
     {
         var first = Form("First");
         first.VatNumber = "EL094259216";
-        (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
 
         var second = Form("Second");
         second.VatNumber = "el 094.259-216"; // the same number, written differently
         var result = await _service.SaveAsync(second, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.VatNumber));
     }
 
@@ -328,12 +329,12 @@ public class AccountServiceTests : IDisposable
         await AddAsync("Acme Retail Ltd");
 
         var warned = await _service.SaveAsync(Form("Acme Retail"), _alice, cancellationToken: Ct);
-        warned.Status.ShouldBe(AccountSaveStatus.SimilarNames);
-        warned.SimilarNames.ShouldBe(["Acme Retail Ltd"]);
+        warned.Status.ShouldBe(SaveStatus.Warning);
+        warned.Warnings.ShouldBe(["Acme Retail Ltd"]);
 
         var accepted = await _service.SaveAsync(
-            Form("Acme Retail"), _alice, new AccountSaveOptions { AcceptSimilarNames = true }, Ct);
-        accepted.Status.ShouldBe(AccountSaveStatus.Saved);
+            Form("Acme Retail"), _alice, new SaveOptions { AcceptWarnings = true }, Ct);
+        accepted.Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -346,7 +347,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -357,7 +358,7 @@ public class AccountServiceTests : IDisposable
         model.Name = "Acme Hellas";
         model.IndustryId = 1;
 
-        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
 
         var saved = await _service.GetAsync(id, _alice, cancellationToken: Ct);
         saved!.Name.ShouldBe("Acme Hellas");
@@ -370,7 +371,7 @@ public class AccountServiceTests : IDisposable
         var model = Form("Ghost");
         model.Id = 999;
 
-        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.NotFound);
+        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.NotFound);
     }
 
     [Fact]
@@ -378,27 +379,27 @@ public class AccountServiceTests : IDisposable
     {
         var model = Form("Acme");
         model.AccountStatusId = 3;
-        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Invalid);
+        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Invalid);
 
         var id = await AddAsync("Old", statusId: 3);
         var existing = (await _service.GetAsync(id, _alice, cancellationToken: Ct))!.ToEditModel();
         existing.Phone = "210";
-        (await _service.SaveAsync(existing, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(existing, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
     public async Task Save_only_lets_a_user_assign_owners_they_are_allowed_to()
     {
         // Sales can only own their own records.
-        (await _service.SaveAsync(Form("For Bob", Bob), _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Invalid);
+        (await _service.SaveAsync(Form("For Bob", Bob), _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Invalid);
 
         // A Manager can assign within the team, but not to another team.
-        (await _service.SaveAsync(Form("For Alice", Alice), _manager, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
-        (await _service.SaveAsync(Form("For Bob 2", Bob), _manager, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Invalid);
+        (await _service.SaveAsync(Form("For Alice", Alice), _manager, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+        (await _service.SaveAsync(Form("For Bob 2", Bob), _manager, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Invalid);
 
         // An Admin can assign to any active user, but not an inactive one.
-        (await _service.SaveAsync(Form("For Bob 3", Bob), _admin, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
-        (await _service.SaveAsync(Form("For Gone", "user-gone"), _admin, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Invalid);
+        (await _service.SaveAsync(Form("For Bob 3", Bob), _admin, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+        (await _service.SaveAsync(Form("For Gone", "user-gone"), _admin, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Invalid);
     }
 
     [Fact]
@@ -408,7 +409,7 @@ public class AccountServiceTests : IDisposable
         var model = (await _service.GetAsync(id, _alice, cancellationToken: Ct))!.ToEditModel();
         model.Phone = "210";
 
-        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -429,7 +430,7 @@ public class AccountServiceTests : IDisposable
         stale.Phone = "210";
         var result = await _service.SaveAsync(stale, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Conflict);
+        result.Status.ShouldBe(SaveStatus.Conflict);
         result.Conflict.ShouldNotBeNull();
     }
 
@@ -446,10 +447,10 @@ public class AccountServiceTests : IDisposable
         }
 
         stale.Phone = "210";
-        var overwrite = new AccountSaveOptions { Overwrite = true };
+        var overwrite = new SaveOptions { Overwrite = true };
 
-        (await _service.SaveAsync(stale.Clone(), _alice, overwrite, Ct)).Status.ShouldBe(AccountSaveStatus.Conflict);
-        (await _service.SaveAsync(stale.Clone(), _admin, overwrite, Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(stale.Clone(), _alice, overwrite, Ct)).Status.ShouldBe(SaveStatus.Conflict);
+        (await _service.SaveAsync(stale.Clone(), _admin, overwrite, Ct)).Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -461,7 +462,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
         var saved = await _service.GetAsync(result.Id, _alice, Ct);
         saved!.VatNumber.ShouldBe("EL094259216");
         saved.Website.ShouldBe("https://mexdb.com/about");
@@ -488,7 +489,7 @@ public class AccountServiceTests : IDisposable
         var wrong = Form("Wrong");
         wrong.VatNumber = "123456789";
         var rejected = await _service.SaveAsync(wrong, _alice, cancellationToken: Ct);
-        rejected.Status.ShouldBe(AccountSaveStatus.Invalid);
+        rejected.Status.ShouldBe(SaveStatus.Invalid);
         rejected.FieldErrors![nameof(AccountEditModel.VatNumber)].ShouldBe(VatNumberRules.InvalidGreekCheckDigitMessage);
     }
 
@@ -503,7 +504,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
         (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("123456789");
     }
 
@@ -519,7 +520,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        result.Status.ShouldBe(SaveStatus.Saved);
         (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe(stored);
     }
 
@@ -536,7 +537,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors![nameof(AccountEditModel.VatNumber)].ShouldBe(message);
     }
 
@@ -551,7 +552,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors![nameof(AccountEditModel.Website)].ShouldBe(WebsiteRules.InvalidMessage);
     }
 
@@ -563,7 +564,7 @@ public class AccountServiceTests : IDisposable
 
         var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.Status.ShouldBe(SaveStatus.Invalid);
         result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.Website));
     }
 

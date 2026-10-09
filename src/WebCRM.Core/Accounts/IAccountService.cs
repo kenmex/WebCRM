@@ -1,44 +1,8 @@
 using WebCRM.Core.Querying;
+using WebCRM.Core.Records;
 using WebCRM.Core.Users;
 
 namespace WebCRM.Core.Accounts;
-
-public enum AccountSaveStatus
-{
-    Saved,
-
-    /// <summary>Field errors in <see cref="AccountSaveResult.FieldErrors"/>; nothing was saved.</summary>
-    Invalid,
-
-    /// <summary>Similar names exist. Nothing was saved; repeat with AcceptSimilarNames to go ahead.</summary>
-    SimilarNames,
-
-    /// <summary>Someone saved the record since it was loaded. Nothing was saved.</summary>
-    Conflict,
-
-    /// <summary>Missing, deleted or not visible to this user.</summary>
-    NotFound,
-}
-
-/// <param name="ChangedBy">Display name of the user who saved the record since it was opened.</param>
-/// <param name="ChangedAtUtc">When they saved it.</param>
-public sealed record ConcurrencyConflict(string? ChangedBy, DateTime? ChangedAtUtc);
-
-public sealed record AccountSaveResult(
-    AccountSaveStatus Status,
-    int Id = 0,
-    IReadOnlyDictionary<string, string>? FieldErrors = null,
-    IReadOnlyList<string>? SimilarNames = null,
-    ConcurrencyConflict? Conflict = null);
-
-public sealed record AccountSaveOptions
-{
-    /// <summary>The user saw the similar-names warning and wants to save anyway.</summary>
-    public bool AcceptSimilarNames { get; init; }
-
-    /// <summary>Save over a concurrent change. Honoured for Admin only.</summary>
-    public bool Overwrite { get; init; }
-}
 
 public enum AccountDeleteStatus
 {
@@ -66,8 +30,8 @@ public interface IAccountService
     /// <summary>A blank form with defaults: owner = current user, status = first status.</summary>
     Task<AccountEditModel> NewAsync(UserContext user, CancellationToken cancellationToken = default);
 
-    Task<AccountSaveResult> SaveAsync(
-        AccountEditModel model, UserContext user, AccountSaveOptions? options = null,
+    Task<SaveResult> SaveAsync(
+        AccountEditModel model, UserContext user, SaveOptions? options = null,
         CancellationToken cancellationToken = default);
 
     Task<AccountDeleteImpact?> GetDeleteImpactAsync(

@@ -1,12 +1,10 @@
 @typeparam TDto
 @implements IListController
-@implements IBrowserViewportObserver
-@implements IAsyncDisposable
+@inherits PhoneAwareComponentBase
 @using Microsoft.Extensions.Logging
 @using MudBlazor.Services
 @using WebCRM.Core.Querying
 @inject NavigationManager Navigation
-@inject IBrowserViewportService Viewport
 @inject ILogger<CrmListPage<TDto>> Logger
 
 @* The list pattern (docs/page-spec.md, "List page"): scope chips, quick filter, typed filters, grid on
@@ -59,7 +57,7 @@
             <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="ReloadAsync" Class="ml-2">Retry</MudButton>
         </MudAlert>
     }
-    else if (!_viewportKnown || (_loading && !_loadedOnce))
+    else if (!ViewportKnown || (_loading && !_loadedOnce))
     {
         <MudStack Spacing="1" aria-busy="true">
             @for (var i = 0; i < 6; i++)
@@ -93,7 +91,7 @@
             }
         </MudPaper>
     }
-    else if (_isPhone)
+    else if (IsPhone)
     {
         <MudStack Spacing="2">
             @foreach (var item in _items)
@@ -146,9 +144,6 @@
     private bool _loading = true;
     private bool _loadedOnce;
     private string? _error;
-    private bool _viewportKnown;
-    private bool _isPhone;
-    private bool _subscribed;
 
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
 
@@ -183,11 +178,6 @@
 
     public ListState State { get; private set; } = new();
 
-    // IBrowserViewportObserver: tells us when the screen crosses the md breakpoint (grid or cards).
-    Guid IBrowserViewportObserver.Id { get; } = Guid.NewGuid();
-
-    ResizeOptions IBrowserViewportObserver.ResizeOptions { get; } = new();
-
     private int PageCount => Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
 
     private int FirstOnPage => (State.Page - 1) * PageSize + 1;
@@ -205,46 +195,13 @@
         State = ListState.FromUri(Navigation.Uri, Scopes, DefaultScope, FilterKeys);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && !_subscribed)
-        {
-            _subscribed = true;
-
-            // Prerender is off, so JS interop is available here. fireImmediately reports the current size.
-            try
-            {
-                await Viewport.SubscribeAsync(this, fireImmediately: true);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // No browser size: show the desktop grid rather than a skeleton that never ends.
-                Logger.LogWarning(ex, "Could not read the browser size; showing the desktop layout.");
-                _subscribed = false;
-                _viewportKnown = true;
-                _isPhone = false;
-                await InvokeAsync(ReloadAsync);
-            }
-        }
-    }
-
-    Task IBrowserViewportObserver.NotifyBrowserViewportChangeAsync(BrowserViewportEventArgs args)
-    {
-        var phone = args.Breakpoint is Breakpoint.Xs or Breakpoint.Sm;
-        if (_viewportKnown && phone == _isPhone)
-        {
-            return Task.CompletedTask;
-        }
-
-        _viewportKnown = true;
-        _isPhone = phone;
-        return InvokeAsync(ReloadAsync);
-    }
+    // The browser size is known, or the screen crossed the md breakpoint: grid or cards, from page one.
+    protected override Task OnLayoutChangedAsync() => ReloadAsync();
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         // Ignore navigation to another page: this component is about to be disposed.
-        if (new Uri(e.Location).AbsolutePath != new Uri(Navigation.Uri).AbsolutePath || !_viewportKnown)
+        if (new Uri(e.Location).AbsolutePath != new Uri(Navigation.Uri).AbsolutePath || !ViewportKnown)
         {
             return;
         }
@@ -268,8 +225,8 @@
         try
         {
             // On a phone there are no page numbers: always start from the first page and use Load more.
-            var request = _isPhone ? State.Clone() : State;
-            if (_isPhone)
+            var request = IsPhone ? State.Clone() : State;
+            if (IsPhone)
             {
                 request.Page = 1;
             }
@@ -281,7 +238,7 @@
             }
 
             // A shared link or a deleted row can leave us past the last page: go to the last one.
-            if (!_isPhone && result.Items.Count == 0 && result.TotalCount > 0 && State.Page > 1)
+            if (!IsPhone && result.Items.Count == 0 && result.TotalCount > 0 && State.Page > 1)
             {
                 var last = (int)Math.Ceiling(result.TotalCount / (double)PageSize);
                 NavigateTo(State.Clone().With(s => s.Page = last), replace: true);
@@ -412,22 +369,11 @@
         _ => "All I can see",
     };
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         Navigation.LocationChanged -= OnLocationChanged;
         _cts?.Cancel();
         _cts?.Dispose();
-
-        if (_subscribed)
-        {
-            try
-            {
-                await Viewport.UnsubscribeAsync(this);
-            }
-            catch (JSDisconnectedException)
-            {
-                // The circuit is already gone; nothing to unsubscribe from.
-            }
-        }
+        await base.DisposeAsync();
     }
 }

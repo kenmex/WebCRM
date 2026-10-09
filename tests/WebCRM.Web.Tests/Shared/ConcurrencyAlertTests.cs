@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using Bunit;
 using Shouldly;
 using WebCRM.Core.Accounts;

@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using Microsoft.Data.SqlClient;
@@ -184,11 +185,11 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
     // ---- Save ----
 
-    public async Task<AccountSaveResult> SaveAsync(
-        AccountEditModel model, UserContext user, AccountSaveOptions? options = null,
+    public async Task<SaveResult> SaveAsync(
+        AccountEditModel model, UserContext user, SaveOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        options ??= new AccountSaveOptions();
+        options ??= new SaveOptions();
         var errors = new Dictionary<string, string>();
 
         await using var db = await factory.CreateDbContextAsync(cancellationToken);
@@ -237,7 +238,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             entity = await db.Accounts.VisibleTo(user).FirstOrDefaultAsync(a => a.Id == model.Id, cancellationToken);
             if (entity is null)
             {
-                return new AccountSaveResult(AccountSaveStatus.NotFound);
+                return new SaveResult(SaveStatus.NotFound);
             }
         }
 
@@ -260,12 +261,13 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
         // Warn, don't block: similar names (not the exact name, which is blocked above).
         var nameChanged = isNew || !string.Equals(entity!.Name, name, StringComparison.OrdinalIgnoreCase);
-        if (nameChanged && !options.AcceptSimilarNames)
+        if (nameChanged && !options.AcceptWarnings)
         {
             var similar = await FindSimilarNamesAsync(db, model.Id, name, cancellationToken);
             if (similar.Count > 0)
             {
-                return new AccountSaveResult(AccountSaveStatus.SimilarNames, SimilarNames: similar);
+                return new SaveResult(
+                    SaveStatus.Warning, Warnings: similar, WarningMessage: "Similar accounts already exist");
             }
         }
 
@@ -311,7 +313,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             });
         }
 
-        return new AccountSaveResult(AccountSaveStatus.Saved, entity.Id);
+        return new SaveResult(SaveStatus.Saved, entity.Id);
     }
 
     private async Task CheckReferencesAsync(
@@ -355,7 +357,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             .ToListAsync(cancellationToken);
     }
 
-    private async Task<AccountSaveResult> ConflictAsync(int id, CancellationToken cancellationToken)
+    private async Task<SaveResult> ConflictAsync(int id, CancellationToken cancellationToken)
     {
         await using var db = await factory.CreateDbContextAsync(cancellationToken);
 
@@ -370,9 +372,9 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
         // Deleted by someone else in the meantime: nothing left to conflict with.
         return current is null
-            ? new AccountSaveResult(AccountSaveStatus.NotFound)
-            : new AccountSaveResult(
-                AccountSaveStatus.Conflict, id, Conflict: new ConcurrencyConflict(current.ChangedBy, current.UpdatedAt));
+            ? new SaveResult(SaveStatus.NotFound)
+            : new SaveResult(
+                SaveStatus.Conflict, id, Conflict: new ConcurrencyConflict(current.ChangedBy, current.UpdatedAt));
     }
 
     // ---- Delete ----
@@ -423,8 +425,8 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
 
     // ---- Helpers ----
 
-    private static AccountSaveResult Invalid(IReadOnlyDictionary<string, string> errors) =>
-        new(AccountSaveStatus.Invalid, FieldErrors: errors);
+    private static SaveResult Invalid(IReadOnlyDictionary<string, string> errors) =>
+        new(SaveStatus.Invalid, FieldErrors: errors);
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

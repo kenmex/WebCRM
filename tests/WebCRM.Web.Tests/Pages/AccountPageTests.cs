@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -160,8 +161,8 @@ public class AccountPageTests : MudTestContext
     [Fact]
     public void A_save_the_server_rejects_keeps_the_form_open_and_dirty_and_shows_the_message()
     {
-        _accounts.OnSave = _ => new AccountSaveResult(
-            AccountSaveStatus.Invalid,
+        _accounts.OnSave = _ => new SaveResult(
+            SaveStatus.Invalid,
             FieldErrors: new Dictionary<string, string> { [nameof(AccountEditModel.VatNumber)] = VatNumberRules.InvalidMessage });
         var cut = RenderExisting();
         Press(cut, "Edit");

@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Querying;
 using WebCRM.Core.Users;
@@ -11,8 +12,8 @@ public sealed class FakeAccountService : IAccountService
 
     public List<AccountEditModel> Saves { get; } = [];
 
-    public Func<AccountEditModel, AccountSaveResult> OnSave { get; set; } =
-        _ => new AccountSaveResult(AccountSaveStatus.Saved, Id: 42);
+    public Func<AccountEditModel, SaveResult> OnSave { get; set; } =
+        _ => new SaveResult(SaveStatus.Saved, Id: 42);
 
     public Task<PagedResult<AccountListItem>> SearchAsync(
         AccountQuery query, UserContext user, CancellationToken cancellationToken = default) =>
@@ -24,8 +25,8 @@ public sealed class FakeAccountService : IAccountService
     public Task<AccountEditModel> NewAsync(UserContext user, CancellationToken cancellationToken = default) =>
         Task.FromResult(new AccountEditModel { OwnerId = user.UserId, AccountStatusId = 1 });
 
-    public Task<AccountSaveResult> SaveAsync(
-        AccountEditModel model, UserContext user, AccountSaveOptions? options = null,
+    public Task<SaveResult> SaveAsync(
+        AccountEditModel model, UserContext user, SaveOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         Saves.Add(model.Clone());

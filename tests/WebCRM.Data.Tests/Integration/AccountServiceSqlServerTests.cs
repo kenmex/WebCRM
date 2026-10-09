@@ -1,3 +1,4 @@
+using WebCRM.Core.Records;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using WebCRM.Core.Accounts;
@@ -208,7 +209,7 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         model.VatNumber = "DE" + Random.Shared.NextInt64(100_000_000, 999_999_999);
 
         var saved = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
-        saved.Status.ShouldBe(AccountSaveStatus.Saved);
+        saved.Status.ShouldBe(SaveStatus.Saved);
 
         var detail = await _service.GetAsync(saved.Id, _alice, Ct);
         detail!.Name.ShouldBe(model.Name);
@@ -222,11 +223,11 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var model = await FormAsync("Unique");
-        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
 
         // Same name, different case: the service catches it.
         var again = await FormAsync("UNIQUE");
-        (await _service.SaveAsync(again, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Invalid);
+        (await _service.SaveAsync(again, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Invalid);
 
         // And the database refuses it even when the service is bypassed.
         await using var db = _factory.CreateDbContext();
@@ -303,7 +304,7 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         (await _service.DeleteAsync(id, _alice, Ct)).Status.ShouldBe(AccountDeleteStatus.Deleted);
 
         (await _service.SaveAsync(await FormAsync("Reusable"), _alice, cancellationToken: Ct))
-            .Status.ShouldBe(AccountSaveStatus.Saved);
+            .Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
@@ -319,7 +320,7 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         {
             var bobs = (await _service.GetAsync(id, _alice, Ct))!.ToEditModel();
             bobs.Phone = "111";
-            (await _service.SaveAsync(bobs, _admin, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+            (await _service.SaveAsync(bobs, _admin, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
         }
         finally
         {
@@ -329,15 +330,15 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         stale.Phone = "222";
         var result = await _service.SaveAsync(stale, _admin, cancellationToken: Ct);
 
-        result.Status.ShouldBe(AccountSaveStatus.Conflict);
+        result.Status.ShouldBe(SaveStatus.Conflict);
         result.Conflict!.ChangedBy.ShouldBe("Bob");
         result.Conflict.ChangedAtUtc.ShouldNotBeNull();
 
         // An Admin may overwrite, a Sales user may not.
-        (await _service.SaveAsync(stale.Clone(), _alice, new AccountSaveOptions { Overwrite = true }, Ct))
-            .Status.ShouldBe(AccountSaveStatus.Conflict);
-        (await _service.SaveAsync(stale.Clone(), _admin, new AccountSaveOptions { Overwrite = true }, Ct))
-            .Status.ShouldBe(AccountSaveStatus.Saved);
+        (await _service.SaveAsync(stale.Clone(), _alice, new SaveOptions { Overwrite = true }, Ct))
+            .Status.ShouldBe(SaveStatus.Conflict);
+        (await _service.SaveAsync(stale.Clone(), _admin, new SaveOptions { Overwrite = true }, Ct))
+            .Status.ShouldBe(SaveStatus.Saved);
     }
 
     [Fact]
