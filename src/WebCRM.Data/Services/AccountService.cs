@@ -30,9 +30,11 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         await using var pageDb = await factory.CreateDbContextAsync(cancellationToken);
 
         var countTask = Filter(countDb, query, user).CountAsync(cancellationToken);
-        var itemsTask = Sort(Project(pageDb, Filter(pageDb, query, user)), query)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        // Sort and page the accounts first, then project: EF cannot translate OrderBy on members of the
+        // constructor-projected DTO, and this way only one page of rows computes the counts.
+        var itemsTask = Project(pageDb, Sort(pageDb, Filter(pageDb, query, user), query)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize))
             .ToListAsync(cancellationToken);
 
         await Task.WhenAll(countTask, itemsTask);
@@ -103,27 +105,35 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             a.Opportunities.Count(o => !o.Stage.IsWon && !o.Stage.IsLost),
             db.Activities.Where(x => x.AccountId == a.Id && x.DoneAt != null).Max(x => x.DoneAt)));
 
-    private static IQueryable<AccountListItem> Sort(IQueryable<AccountListItem> items, AccountQuery query)
+    private static IQueryable<Account> Sort(CrmDbContext db, IQueryable<Account> accounts, AccountQuery query)
     {
         var desc = query.Descending;
         var ordered = query.Sort switch
         {
-            AccountSort.Industry => OrderBy(items, x => x.IndustryName, desc),
-            AccountSort.City => OrderBy(items, x => x.City, desc),
-            AccountSort.Status => OrderBy(items, x => x.StatusName, desc),
-            AccountSort.Owner => OrderBy(items, x => x.OwnerName, desc),
-            AccountSort.OpenOpportunities => OrderBy(items, x => x.OpenOpportunities, desc),
-            AccountSort.LastActivity => OrderBy(items, x => x.LastActivityAt, desc),
-            _ => OrderBy(items, x => x.Name, desc),
+            AccountSort.Industry => OrderBy(accounts, a => a.Industry != null ? a.Industry.Name : null, desc),
+            AccountSort.City => OrderBy(
+                accounts,
+                a => a.Addresses.Where(ad => ad.AddressType == AddressType.Billing).Select(ad => ad.City).FirstOrDefault(),
+                desc),
+            AccountSort.Status => OrderBy(accounts, a => a.AccountStatus.Name, desc),
+            AccountSort.Owner => OrderBy(
+                accounts, a => db.Users.Where(u => u.Id == a.OwnerId).Select(u => u.DisplayName).FirstOrDefault(), desc),
+            AccountSort.OpenOpportunities => OrderBy(
+                accounts, a => a.Opportunities.Count(o => !o.Stage.IsWon && !o.Stage.IsLost), desc),
+            AccountSort.LastActivity => OrderBy(
+                accounts,
+                a => db.Activities.Where(x => x.AccountId == a.Id && x.DoneAt != null).Max(x => x.DoneAt),
+                desc),
+            _ => OrderBy(accounts, a => a.Name, desc),
         };
 
         // Id as the tie-breaker keeps paging stable.
-        return ordered.ThenBy(x => x.Id);
+        return ordered.ThenBy(a => a.Id);
     }
 
-    private static IOrderedQueryable<AccountListItem> OrderBy<TKey>(
-        IQueryable<AccountListItem> items, Expression<Func<AccountListItem, TKey>> key, bool descending) =>
-        descending ? items.OrderByDescending(key) : items.OrderBy(key);
+    private static IOrderedQueryable<Account> OrderBy<TKey>(
+        IQueryable<Account> accounts, Expression<Func<Account, TKey>> key, bool descending) =>
+        descending ? accounts.OrderByDescending(key) : accounts.OrderBy(key);
 
     // ---- Detail (P9) ----
 

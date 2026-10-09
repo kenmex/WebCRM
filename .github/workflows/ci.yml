@@ -9,6 +9,28 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # A throwaway SQL Server for the integration tests. The password only protects this
+    # container, which lives for the length of the job and is not reachable from outside.
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Ci-only-Passw0rd!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Ci-only-Passw0rd!' -Q 'select 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 20s
+
+    env:
+      WEBCRM_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Ci-only-Passw0rd!;TrustServerCertificate=True"
+      WEBCRM_TEST_REQUIRE_SQLSERVER: "1"
+
     steps:
       - uses: actions/checkout@v4
 
