@@ -205,7 +205,7 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         await EnsureReferenceDataAsync();
         var model = await FormAsync("Round trip");
-        model.VatNumber = _prefix.Trim() + "VAT";
+        model.VatNumber = "DE" + Random.Shared.NextInt64(100_000_000, 999_999_999);
 
         var saved = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
         saved.Status.ShouldBe(AccountSaveStatus.Saved);

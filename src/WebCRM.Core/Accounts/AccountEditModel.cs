@@ -14,7 +14,9 @@ public sealed class AccountEditModel
     [StringLength(200)]
     public string Name { get; set; } = string.Empty;
 
-    [StringLength(20)]
+    // Raw input may contain spaces, dots and dashes; the stored value is normalised (max 14 characters).
+    [StringLength(30)]
+    [VatNumber]
     public string? VatNumber { get; set; }
 
     public int? IndustryId { get; set; }
@@ -26,7 +28,7 @@ public sealed class AccountEditModel
     public string? Phone { get; set; }
 
     [StringLength(300)]
-    [AbsoluteUrl]
+    [Website]
     public string? Website { get; set; }
 
     [Required(ErrorMessage = "Owner is required.")]

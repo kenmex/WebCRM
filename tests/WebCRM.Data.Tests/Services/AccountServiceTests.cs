@@ -311,11 +311,11 @@ public class AccountServiceTests : IDisposable
     public async Task Save_blocks_a_duplicate_vat_number()
     {
         var first = Form("First");
-        first.VatNumber = "EL123";
+        first.VatNumber = "EL123456789";
         (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
 
         var second = Form("Second");
-        second.VatNumber = "EL123";
+        second.VatNumber = "123 456 789"; // the same number, written differently
         var result = await _service.SaveAsync(second, _alice, cancellationToken: Ct);
 
         result.Status.ShouldBe(AccountSaveStatus.Invalid);
@@ -450,6 +450,74 @@ public class AccountServiceTests : IDisposable
 
         (await _service.SaveAsync(stale.Clone(), _alice, overwrite, Ct)).Status.ShouldBe(AccountSaveStatus.Conflict);
         (await _service.SaveAsync(stale.Clone(), _admin, overwrite, Ct)).Status.ShouldBe(AccountSaveStatus.Saved);
+    }
+
+    [Fact]
+    public async Task Save_normalises_the_vat_number_and_adds_https_to_the_website()
+    {
+        var model = Form("Acme");
+        model.VatNumber = "el 123.456-789";
+        model.Website = "  mexdb.com/about ";
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Saved);
+        var saved = await _service.GetAsync(result.Id, _alice, Ct);
+        saved!.VatNumber.ShouldBe("EL123456789");
+        saved.Website.ShouldBe("https://mexdb.com/about");
+    }
+
+    [Fact]
+    public async Task Save_stores_a_bare_9_digit_greek_afm_with_the_EL_prefix()
+    {
+        var model = Form("Acme");
+        model.VatNumber = "123456789";
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        (await _service.GetAsync(result.Id, _alice, Ct))!.VatNumber.ShouldBe("EL123456789");
+    }
+
+    [Theory]
+    [InlineData("12345", VatNumberRules.InvalidMessage)]
+    [InlineData("EL12345", VatNumberRules.InvalidGreekMessage)]
+    [InlineData("DE 12 34 56 78 90 12 34", VatNumberRules.InvalidMessage)]
+    public async Task Save_rejects_an_invalid_vat_number_with_a_clear_message_on_that_field(string vat, string message)
+    {
+        var model = Form("Acme");
+        model.VatNumber = vat;
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.FieldErrors![nameof(AccountEditModel.VatNumber)].ShouldBe(message);
+    }
+
+    [Theory]
+    [InlineData("ftp://mexdb.com")]
+    [InlineData("not a url")]
+    [InlineData("https://user:pw@mexdb.com")]
+    public async Task Save_rejects_a_website_that_is_still_not_an_http_or_https_url(string website)
+    {
+        var model = Form("Acme");
+        model.Website = website;
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.FieldErrors![nameof(AccountEditModel.Website)].ShouldBe(WebsiteRules.InvalidMessage);
+    }
+
+    [Fact]
+    public async Task Save_rejects_a_website_that_is_too_long_once_https_is_added()
+    {
+        var model = Form("Acme");
+        model.Website = new string('a', 295) + ".com"; // 299 characters: fine as typed, 307 with https://
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(AccountSaveStatus.Invalid);
+        result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.Website));
     }
 
     // ---- Delete ----

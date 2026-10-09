@@ -20,11 +20,11 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
 | Name | nvarchar(200) AI | no |  | Unique among active accounts; similar names warned |
-| VatNumber | nvarchar(20) | yes |  | Unique when filled, among active accounts |
+| VatNumber | nvarchar(20) | yes |  | Stored normalised: upper case, no spaces, dots or dashes. Format: 2-letter country prefix + 2 to 12 letters or digits; `EL` + exactly 9 digits for Greece. A bare 9-digit number is a Greek ΑΦΜ and is stored as `EL` + the digits; a Greek-letter `ΕΛ` prefix is stored as `EL`. Unique when filled, among active accounts (compared after normalising) |
 | IndustryId | int | yes |  | FK Industry |
 | AccountStatusId | int | no | first status | FK AccountStatus |
 | Phone | nvarchar(30) | yes |  |  |
-| Website | nvarchar(300) | yes |  | Valid absolute URL |
+| Website | nvarchar(300) | yes |  | Valid absolute http or https URL. A missing scheme is not an error: `https://` is added on save (`mexdb.com` is stored as `https://mexdb.com`) |
 | OwnerId | nvarchar(450) | no | creator | FK user; index (OwnerId, IsActive) |
 | ImportBatchId | int | yes |  | FK ImportBatch, for import rollback |
 

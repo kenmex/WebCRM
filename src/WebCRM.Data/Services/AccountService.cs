@@ -16,6 +16,7 @@ namespace WebCRM.Data.Services;
 public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwnerService owners) : IAccountService
 {
     private const int MaxSimilarNames = 5;
+    private const int MaxWebsiteLength = 300;
 
     // ---- List (P8) ----
 
@@ -190,6 +191,11 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         options ??= new AccountSaveOptions();
         var errors = new Dictionary<string, string>();
 
+        // Normalise first, so validation and the uniqueness checks see what will be stored: "el 123.456-789"
+        // and "EL123456789" are the same VAT number, and "mexdb.com" becomes "https://mexdb.com".
+        model.VatNumber = VatNumberRules.Normalize(model.VatNumber);
+        model.Website = WebsiteRules.Normalize(model.Website);
+
         // The server validates again; the form's checks are only for the user's convenience.
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(model, new ValidationContext(model), results, validateAllProperties: true);
@@ -202,6 +208,11 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         }
 
         var name = model.Name?.Trim() ?? string.Empty;
+        if (model.Website is { Length: > MaxWebsiteLength })
+        {
+            errors.TryAdd(nameof(AccountEditModel.Website), $"The web address is too long (maximum {MaxWebsiteLength} characters).");
+        }
+
         if (name.Length == 0)
         {
             errors.TryAdd(nameof(AccountEditModel.Name), "Name is required.");
@@ -212,7 +223,7 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             return Invalid(errors);
         }
 
-        var vat = Blank(model.VatNumber);
+        var vat = model.VatNumber;
 
         await using var db = await factory.CreateDbContextAsync(cancellationToken);
 
