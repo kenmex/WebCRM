@@ -4,6 +4,7 @@ using System.Linq.Expressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using WebCRM.Core.Accounts;
+using WebCRM.Core.Contacts;
 using WebCRM.Core.Entities;
 using WebCRM.Core.Querying;
 using WebCRM.Core.Users;
@@ -63,6 +64,8 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             var search = query.Search.Trim();
             accounts = accounts.Where(a =>
                 a.Name.Contains(search)
+                || (a.LegalName != null && a.LegalName.Contains(search))
+                || (a.Email != null && a.Email.Contains(search))
                 || (a.VatNumber != null && a.VatNumber.Contains(search))
                 || a.Addresses.Any(ad => ad.AddressType == AddressType.Billing && ad.City != null && ad.City.Contains(search)));
         }
@@ -161,7 +164,10 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
                 db.Users.Where(u => u.Id == a.OwnerId).Select(u => u.IsActive).FirstOrDefault(),
                 a.CreatedAt,
                 a.UpdatedAt,
-                a.RowVersion))
+                a.RowVersion,
+                a.LegalName,
+                a.Email,
+                a.TaxOffice))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -238,6 +244,9 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
             .Select(c => c.DefaultCountryCode).FirstOrDefaultAsync(cancellationToken);
         model.VatNumber = VatNumberRules.Normalize(model.VatNumber, defaultCountry);
         model.Website = WebsiteRules.Normalize(model.Website);
+        model.Email = ContactRules.NormalizeEmail(model.Email);
+        model.LegalName = Blank(model.LegalName);
+        model.TaxOffice = Blank(model.TaxOffice);
 
         // The server validates again; the form's checks are only for the user's convenience.
         var results = new List<ValidationResult>();
@@ -329,6 +338,9 @@ public sealed class AccountService(IDbContextFactory<CrmDbContext> factory, IOwn
         entity.AccountStatusId = model.AccountStatusId!.Value;
         entity.Phone = Blank(model.Phone);
         entity.Website = Blank(model.Website);
+        entity.LegalName = model.LegalName;
+        entity.Email = model.Email;
+        entity.TaxOffice = model.TaxOffice;
         entity.OwnerId = model.OwnerId!;
 
         try

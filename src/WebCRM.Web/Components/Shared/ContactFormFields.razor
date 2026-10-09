@@ -1,4 +1,5 @@
 @using WebCRM.Core.Contacts
+@using WebCRM.Core.Lookups
 @using WebCRM.Core.Users
 @inject IContactService Contacts
 @inject IUserContextProvider UserContexts
@@ -7,20 +8,27 @@
    EditForm. On a new contact the owner follows the account's owner until the user picks an owner themselves. *@
 
 <MudGrid Spacing="3">
-    <MudItem xs="12" sm="6">
+    <MudItem xs="12" sm="4" md="2">
+        <LookupSelect Kind="LookupKind.Salutation" Label="Salutation" @bind-Value="Model.SalutationId" />
+    </MudItem>
+    <MudItem xs="12" sm="8" md="5">
         <MudTextField @bind-Value="Model.FirstName" For="@(() => Model.FirstName)" Label="First name"
                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" AutoFocus="@(AutoFocus && !LockAccount)" />
     </MudItem>
-    <MudItem xs="12" sm="6">
+    <MudItem xs="12" md="5">
         <MudTextField @bind-Value="Model.LastName" For="@(() => Model.LastName)" Label="Last name" Required="true"
                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" AutoFocus="@(AutoFocus && LockAccount)" />
     </MudItem>
-    <MudItem xs="12" md="8">
+    <MudItem xs="12" md="6">
         <AccountPicker Value="Model.AccountId" ValueChanged="OnAccountChangedAsync" ValueExpression="@(() => Model.AccountId)"
                        Required="true" Disabled="LockAccount" />
     </MudItem>
-    <MudItem xs="12" md="4">
+    <MudItem xs="12" sm="6" md="3">
         <MudTextField @bind-Value="Model.JobTitle" For="@(() => Model.JobTitle)" Label="Job title"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudTextField @bind-Value="Model.Department" For="@(() => Model.Department)" Label="Department"
                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
     </MudItem>
     <MudItem xs="12" md="6">
@@ -38,6 +46,10 @@
     <MudItem xs="12" md="6">
         <OwnerPicker Required="true" Value="@Model.OwnerId" ValueChanged="OnOwnerChangedAsync"
                      ValueExpression="@(() => Model.OwnerId)" />
+    </MudItem>
+    <MudItem xs="12">
+        <MudSwitch @bind-Value="Model.DoNotContact" For="@(() => Model.DoNotContact)" Color="Color.Warning"
+                   Label="Do not contact (this person has asked not to be contacted)" />
     </MudItem>
 </MudGrid>
 

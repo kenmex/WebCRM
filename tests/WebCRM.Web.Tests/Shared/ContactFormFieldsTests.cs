@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
+using WebCRM.Core.Lookups;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Shared;
 using WebCRM.Web.Tests.TestSupport;
@@ -26,6 +27,8 @@ public class ContactFormFieldsTests : MudTestContext
             new OwnerOption("owner-2", "Olga Owner", true),
             new OwnerOption("owner-3", "Otto Owner", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<ILookupService>(new FakeLookupService(
+            new LookupOption(1, "Mr", true), new LookupOption(2, "Ms", true), new LookupOption(3, "Dr", true)));
         StartProviders();
     }
 
@@ -115,5 +118,32 @@ public class ContactFormFieldsTests : MudTestContext
         var model = cut.Instance.Model;
         (model.FirstName, model.LastName, model.JobTitle, model.Email, model.Phone, model.Mobile)
             .ShouldBe(("Anna", "Smith", "Buyer", "anna@example.com", "210 123 4567", "694 000 1111"));
+    }
+    [Fact]
+    public void The_new_fields_update_the_model_and_the_switch_toggles_Do_not_contact()
+    {
+        var cut = Render<ContactFormHost>(p => p.Add(x => x.InitialOwnerId, "sales-1"));
+
+        cut.InputByLabel("Department").Change("Purchasing");
+        cut.Find("input[type=checkbox]").Change(true);
+
+        cut.Instance.Model.Department.ShouldBe("Purchasing");
+        cut.Instance.Model.DoNotContact.ShouldBeTrue();
+        cut.Instance.Context.IsModified().ShouldBeTrue();
+
+        cut.Find("input[type=checkbox]").Change(false);
+        cut.Instance.Model.DoNotContact.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void The_salutation_select_offers_the_lookup_and_shows_the_chosen_value()
+    {
+        var cut = Render<ContactFormHost>(p => p.Add(x => x.InitialOwnerId, "sales-1"));
+        cut.InputByLabel("Salutation").GetAttribute("value").ShouldBeNullOrEmpty();
+
+        cut.InvokeAsync(() => cut.FindComponent<LookupSelect>().Instance.ValueChanged.InvokeAsync(3));
+
+        cut.WaitForAssertion(() => cut.Instance.Model.SalutationId.ShouldBe(3));
+        cut.WaitForAssertion(() => cut.InputByLabel("Salutation").GetAttribute("value").ShouldBe("Dr"));
     }
 }

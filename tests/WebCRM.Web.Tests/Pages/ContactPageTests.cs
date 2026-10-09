@@ -5,6 +5,7 @@ using Shouldly;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Records;
+using WebCRM.Core.Lookups;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Pages.Contacts;
 using WebCRM.Web.Tests.TestSupport;
@@ -32,6 +33,8 @@ public class ContactPageTests : MudTestContext
         Services.AddSingleton<IOwnerService>(new FakeOwnerService(
             new OwnerOption("sales-1", "Sam Sales", true), new OwnerOption("owner-2", "Olga Owner", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<ILookupService>(new FakeLookupService(
+            new LookupOption(1, "Mr", true), new LookupOption(2, "Ms", true), new LookupOption(3, "Dr", true)));
         StartProviders();
 
         _navigation = Services.GetRequiredService<NavigationManager>();
@@ -297,5 +300,76 @@ public class ContactPageTests : MudTestContext
 
         cut.WaitForAssertion(() => Path.ShouldBe("/contacts"));
         _contacts.Deleted.ShouldBe([7]);
+    }
+    // ---- Salutation, department, Do not contact ----
+
+    [Fact]
+    public void A_do_not_contact_contact_shows_a_warning_chip_with_the_date_in_the_header()
+    {
+        _contacts.Contacts[7] = Detail(email: "anna@example.com") with
+        {
+            DoNotContact = true,
+            DoNotContactSince = new DateTime(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc),
+        };
+
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-do-not-contact]").Count.ShouldBe(1));
+        var chip = cut.Find("[data-do-not-contact]");
+        chip.TextContent.Trim().ShouldBe("Do not contact");
+        chip.ClassList.ShouldContain("mud-chip-color-warning");
+        chip.GetAttribute("title").ShouldBe("Since 9 Oct 2026 15:00"); // shown in Athens time
+    }
+
+    [Fact]
+    public void A_contact_who_can_be_contacted_has_no_warning_chip()
+    {
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.Find("h1").TextContent.ShouldBe("Anna Smith"));
+        cut.FindAll("[data-do-not-contact]").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Read_mode_shows_the_salutation_and_the_department()
+    {
+        _contacts.Contacts[7] = Detail() with { SalutationName = "Dr", Department = "Purchasing" };
+
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Purchasing"));
+        cut.Markup.ShouldContain("Salutation");
+        cut.Markup.ShouldContain("Department");
+        cut.FindAll(".mud-typography-body1").Select(e => e.TextContent.Trim()).ShouldContain("Dr");
+    }
+
+    [Fact]
+    public void The_form_has_a_salutation_a_department_and_a_Do_not_contact_switch_that_are_saved()
+    {
+        _contacts.Contacts[7] = Detail() with { SalutationId = 3, SalutationName = "Dr", Department = "Sales" };
+        var cut = RenderExisting();
+        Press(cut, "Edit");
+        cut.WaitForAssertion(() => cut.InputByLabel("Department").GetAttribute("value").ShouldBe("Sales"));
+        cut.WaitForAssertion(() => cut.InputByLabel("Salutation").GetAttribute("value").ShouldBe("Dr"));
+
+        cut.InputByLabel("Department").Change("Purchasing");
+        cut.Find("input[type=checkbox]").Change(true);
+        Press(cut, "Save");
+
+        cut.WaitForAssertion(() => _contacts.Saves.Count.ShouldBe(1));
+        var saved = _contacts.Saves.Single().Model;
+        saved.Department.ShouldBe("Purchasing");
+        saved.SalutationId.ShouldBe(3);
+        saved.DoNotContact.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_Do_not_contact_contact_keeps_the_switch_on_when_edited()
+    {
+        _contacts.Contacts[7] = Detail() with { DoNotContact = true, DoNotContactSince = DateTime.UtcNow };
+        var cut = RenderExisting();
+        Press(cut, "Edit");
+
+        cut.WaitForAssertion(() => cut.Find("input[type=checkbox]").HasAttribute("checked").ShouldBeTrue());
     }
 }

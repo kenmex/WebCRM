@@ -52,13 +52,23 @@ else
             @if (_detail is not null)
             {
                 <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Legal name" Value="@_detail.LegalName" /></MudItem>
                     <MudItem xs="12" sm="6" md="4"><ReadField Label="VAT / Tax ID" Value="@_detail.VatNumber" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Tax office (ΔΟΥ)" Value="@_detail.TaxOffice" /></MudItem>
                     <MudItem xs="12" sm="6" md="4"><ReadField Label="Industry" Value="@_detail.IndustryName" /></MudItem>
                     <MudItem xs="12" sm="6" md="4">
                         <ReadField Label="Phone">
                             @if (!string.IsNullOrWhiteSpace(_detail.Phone))
                             {
                                 <MudLink Href="@Links.TelUri(_detail.Phone)">@_detail.Phone</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Email">
+                            @if (Links.MailtoUri(_detail.Email) is { } mail)
+                            {
+                                <MudLink Href="@mail">@_detail.Email</MudLink>
                             }
                         </ReadField>
                     </MudItem>
@@ -94,6 +104,15 @@ else
                         <MudTextField @bind-Value="model.VatNumber" For="@(() => model.VatNumber)" Label="VAT / Tax ID"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
                     </MudItem>
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="model.LegalName" For="@(() => model.LegalName)" Label="Legal name"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200"
+                                      HelperText="Only if it differs from the name above" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="model.TaxOffice" For="@(() => model.TaxOffice)" Label="Tax office (ΔΟΥ)"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+                    </MudItem>
                     <MudItem xs="12" sm="6" md="4">
                         <LookupSelect Kind="LookupKind.Industry" Label="Industry"
                                       @bind-Value="model.IndustryId" />
@@ -109,7 +128,11 @@ else
                         <MudTextField @bind-Value="model.Phone" For="@(() => model.Phone)" Label="Phone" InputType="InputType.Telephone"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
                     </MudItem>
-                    <MudItem xs="12" sm="6" md="8">
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="model.Email" For="@(() => model.Email)" Label="Email" InputType="InputType.Email"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="254" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
                         <MudTextField @bind-Value="model.Website" For="@(() => model.Website)" Label="Website" InputType="InputType.Url"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="300"
                                       HelperText="https://example.com" />

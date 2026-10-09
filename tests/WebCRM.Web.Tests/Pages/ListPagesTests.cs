@@ -47,19 +47,20 @@ public class ListPagesTests : MudTestContext
     [Fact]
     public void The_contacts_url_becomes_the_query_and_the_filters_show_their_values()
     {
-        _navigation.NavigateTo("/contacts?scope=all&q=ann&account=5&owner=owner-2&email=1&sort=account&desc=1&page=2");
+        _navigation.NavigateTo("/contacts?scope=all&q=ann&account=5&owner=owner-2&email=1&dnc=1&sort=account&desc=1&page=2");
 
         var cut = Render<ContactsPage>();
 
         cut.WaitForAssertion(() => _contacts.Searches.Count.ShouldBe(1));
         var query = _contacts.Searches[0];
         query.ShouldBe(new ContactQuery(
-            ListScope.All, Search: "ann", AccountId: 5, OwnerId: "owner-2", HasEmail: true,
+            ListScope.All, Search: "ann", AccountId: 5, OwnerId: "owner-2", HasEmail: true, DoNotContact: true,
             Sort: ContactSort.Account, Descending: true, Page: 2));
 
         // The controls show the filter values, not the code that produced them.
         cut.WaitForAssertion(() => cut.InputByLabel("Owner").GetAttribute("value").ShouldBe("Olga Owner"));
         cut.InputByLabel("Email").GetAttribute("value").ShouldBe("Has email");
+        cut.InputByLabel("Do not contact").GetAttribute("value").ShouldBe("Do not contact");
         cut.WaitForAssertion(() => cut.InputByLabel("Account").GetAttribute("value").ShouldBe("Acme Hellas"));
     }
 
@@ -110,6 +111,47 @@ public class ListPagesTests : MudTestContext
         cut.Find("a[href='tel:+302101234567']").TextContent.ShouldBe("+30 210 123 4567");
         cut.Find("a[href='tel:6940001111']").TextContent.ShouldBe("694 000 1111");
         cut.FindAll("a[href^='mailto:']").Count.ShouldBe(1); // Bob has no email, so no empty link
+    }
+
+
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("0", false)]
+    [InlineData("", null)]
+    public void The_do_not_contact_filter_maps_to_the_query(string value, bool? expected)
+    {
+        _navigation.NavigateTo("/contacts?scope=all" + (value.Length > 0 ? $"&dnc={value}" : string.Empty));
+
+        Render<ContactsPage>().WaitForAssertion(() => _contacts.Searches.Single().DoNotContact.ShouldBe(expected));
+    }
+
+    [Fact]
+    public void A_do_not_contact_contact_shows_the_warning_chip_in_its_row()
+    {
+        _contacts.OnSearch = _ => new PagedResult<ContactListItem>(
+            [Row(1, "Anna Smith") with { DoNotContact = true }, Row(2, "Bob Jones")],
+            2);
+        _navigation.NavigateTo("/contacts?scope=all");
+
+        var cut = Render<ContactsPage>();
+
+        cut.WaitForAssertion(() => cut.FindAll("tbody tr").Count.ShouldBe(2));
+        var rows = cut.FindAll("tbody tr");
+        rows[0].QuerySelectorAll("[data-do-not-contact]").Length.ShouldBe(1);
+        rows[1].QuerySelectorAll("[data-do-not-contact]").Length.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task On_a_phone_the_card_shows_the_warning_chip_too()
+    {
+        Viewport.Breakpoint = MudBlazor.Breakpoint.Xs;
+        _contacts.OnSearch = _ => new PagedResult<ContactListItem>([Row(1, "Anna Smith") with { DoNotContact = true }], 1);
+        _navigation.NavigateTo("/contacts?scope=all");
+
+        var cut = Render<ContactsPage>();
+
+        cut.WaitForAssertion(() => cut.FindAll("a.crm-card-link [data-do-not-contact]").Count.ShouldBe(1));
+        await Task.CompletedTask;
     }
 
     // ---- Accounts ----

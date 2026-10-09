@@ -1,0 +1,13 @@
+@using WebCRM.Core
+
+@* The warning shown next to a contact who has asked not to be contacted. *@
+
+<MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+         Icon="@Icons.Material.Filled.Block" title="@Tooltip" data-do-not-contact="true">Do not contact</MudChip>
+
+@code {
+    /// <summary>When it was switched on (UTC); shown on hover.</summary>
+    [Parameter] public DateTime? Since { get; set; }
+
+    private string? Tooltip => Since is { } since ? $"Since {TimeDisplay.Format(since)}" : null;
+}

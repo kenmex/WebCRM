@@ -211,4 +211,56 @@ public class AccountPageTests : MudTestContext
         cut.FindAll(".mud-tab").ShouldBeEmpty();
         _addresses.Gets.ShouldBe(0);
     }
+    // ---- Legal name, email, tax office ----
+
+    [Fact]
+    public void Read_mode_shows_the_legal_name_the_tax_office_and_an_email_link()
+    {
+        _accounts.Accounts[7] = _accounts.Accounts[7] with
+        {
+            LegalName = "Acme Hellas A.E.",
+            TaxOffice = "ΔΟΥ Κηφισιάς",
+            Email = "info@acme.gr",
+        };
+
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Acme Hellas A.E."));
+        cut.Markup.ShouldContain("Tax office (ΔΟΥ)");
+        cut.Markup.ShouldContain("ΔΟΥ Κηφισιάς");
+        cut.Find("a.mud-link[href='mailto:info@acme.gr']").TextContent.ShouldBe("info@acme.gr");
+    }
+
+    [Fact]
+    public void The_form_has_legal_name_email_and_tax_office_and_saves_them()
+    {
+        var cut = RenderExisting();
+        Press(cut, "Edit");
+        cut.WaitForAssertion(() => cut.InputByLabel("Legal name"));
+
+        cut.InputByLabel("Legal name").Change("Acme Hellas A.E.");
+        cut.InputByLabel("Email").Change("info@acme.gr");
+        cut.InputByLabel("Tax office (ΔΟΥ)").Change("ΔΟΥ Κηφισιάς");
+        Press(cut, "Save");
+
+        cut.WaitForAssertion(() => _accounts.Saves.Count.ShouldBe(1));
+        var saved = _accounts.Saves.Single();
+        saved.LegalName.ShouldBe("Acme Hellas A.E.");
+        saved.Email.ShouldBe("info@acme.gr");
+        saved.TaxOffice.ShouldBe("ΔΟΥ Κηφισιάς");
+    }
+
+    [Fact]
+    public void An_invalid_account_email_is_rejected_by_the_form_before_the_server_is_called()
+    {
+        var cut = RenderExisting();
+        Press(cut, "Edit");
+        cut.WaitForAssertion(() => cut.InputByLabel("Email"));
+        cut.InputByLabel("Email").Change("not an email");
+
+        Press(cut, "Save");
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Enter a valid email address, e.g. name@example.com."));
+        _accounts.Saves.ShouldBeEmpty();
+    }
 }

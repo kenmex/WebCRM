@@ -21,3 +21,5 @@ public class ActivityType : Lookup
 public class AccountStatus : Lookup;
 
 public class LostReason : Lookup;
+
+public class Salutation : Lookup;

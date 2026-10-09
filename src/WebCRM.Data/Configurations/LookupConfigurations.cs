@@ -28,6 +28,8 @@ public class AccountStatusConfiguration : LookupConfiguration<AccountStatus>;
 
 public class LostReasonConfiguration : LookupConfiguration<LostReason>;
 
+public class SalutationConfiguration : LookupConfiguration<Salutation>;
+
 public class LeadStatusConfiguration : LookupConfiguration<LeadStatus>
 {
     public override void Configure(EntityTypeBuilder<LeadStatus> builder)

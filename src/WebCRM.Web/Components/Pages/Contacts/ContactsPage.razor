@@ -39,12 +39,25 @@
                 <MudSelectItem T="string" Value="@("1")">Has email</MudSelectItem>
                 <MudSelectItem T="string" Value="@("0")">No email</MudSelectItem>
             </MudSelect>
+            <MudSelect T="string" Label="Do not contact" Value="@(list.State.GetFilter(DoNotContactKey))"
+                       ToStringFunc="@(v => v == "1" ? "Do not contact" : v == "0" ? "Can be contacted" : null)"
+                       ValueChanged="@(v => list.SetFilterAsync(DoNotContactKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 190px;">
+                <MudSelectItem T="string" Value="@("1")">Do not contact</MudSelectItem>
+                <MudSelectItem T="string" Value="@("0")">Can be contacted</MudSelectItem>
+            </MudSelect>
         </Filters>
 
         <Columns>
             <TemplateColumn T="ContactListItem" Sortable="false">
                 <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
-                <CellTemplate><strong>@context.Item.FullName</strong></CellTemplate>
+                <CellTemplate>
+                    <strong>@context.Item.FullName</strong>
+                    @if (context.Item.DoNotContact)
+                    {
+                        <DoNotContactChip />
+                    }
+                </CellTemplate>
             </TemplateColumn>
             <TemplateColumn T="ContactListItem" Sortable="false">
                 <HeaderTemplate><SortHeader Key="account">Account</SortHeader></HeaderTemplate>
@@ -90,6 +103,10 @@
         <Card Context="c">
             <MudStack Spacing="1">
                 <MudText Typo="Typo.subtitle1"><strong>@c.FullName</strong></MudText>
+                @if (c.DoNotContact)
+                {
+                    <div><DoNotContactChip /></div>
+                }
                 <MudText Typo="Typo.body2" Color="Color.Secondary">
                     @string.Join(" · ", new[] { c.AccountName, c.JobTitle }.Where(s => !string.IsNullOrEmpty(s)))
                 </MudText>
@@ -103,8 +120,9 @@
     private const string AccountKey = "account";
     private const string OwnerKey = "owner";
     private const string HasEmailKey = "email";
+    private const string DoNotContactKey = "dnc";
 
-    private static readonly string[] _filterKeys = [AccountKey, OwnerKey, HasEmailKey];
+    private static readonly string[] _filterKeys = [AccountKey, OwnerKey, HasEmailKey, DoNotContactKey];
 
     private UserContext? _user;
     private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
@@ -144,6 +162,7 @@
             AccountId: state.GetInt(AccountKey),
             OwnerId: state.GetFilter(OwnerKey),
             HasEmail: state.GetFilter(HasEmailKey) switch { "1" => true, "0" => false, _ => null },
+            DoNotContact: state.GetFilter(DoNotContactKey) switch { "1" => true, "0" => false, _ => null },
             Sort: state.Sort?.ToLowerInvariant() switch
             {
                 "account" => ContactSort.Account,

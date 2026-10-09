@@ -5,6 +5,7 @@ using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Querying;
 using WebCRM.Core.Records;
+using WebCRM.Core.Lookups;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Pages.Accounts;
 using WebCRM.Web.Tests.TestSupport;
@@ -29,6 +30,8 @@ public class AccountContactsTabTests : MudTestContext
         Services.AddSingleton<IOwnerService>(new FakeOwnerService(
             new OwnerOption("sales-1", "Sam Sales", true), new OwnerOption("owner-2", "Olga Owner", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<ILookupService>(new FakeLookupService(
+            new LookupOption(1, "Mr", true), new LookupOption(2, "Ms", true), new LookupOption(3, "Dr", true)));
         StartProviders();
     }
 
@@ -157,5 +160,16 @@ public class AccountContactsTabTests : MudTestContext
         DialogProvider.WaitForAssertion(() => DialogProvider.Markup.ShouldNotContain("Add contact"));
         _contacts.Saves.ShouldBeEmpty();
         _contacts.Searches.Count.ShouldBe(1);
+    }
+    [Fact]
+    public void A_do_not_contact_contact_shows_the_warning_chip_in_the_accounts_contacts_tab()
+    {
+        _contacts.OnSearch = _ => new PagedResult<ContactListItem>(
+            [new ContactListItem(1, "Anna Smith", 5, "Acme Hellas", "Buyer", null, null, null, "owner-2", "Olga Owner", true, null, DoNotContact: true)],
+            1);
+
+        var cut = RenderTab();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-do-not-contact]").Count.ShouldBe(1));
     }
 }

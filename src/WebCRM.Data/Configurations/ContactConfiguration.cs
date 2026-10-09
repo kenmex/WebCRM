@@ -23,6 +23,12 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(e => e.Email).HasMaxLength(254).UseCollation(AccentInsensitive);
         builder.Property(e => e.Phone).HasMaxLength(30);
         builder.Property(e => e.Mobile).HasMaxLength(30);
+        builder.Property(e => e.Department).HasMaxLength(100);
+
+        // Default 0, and the database default is what an insert without the column gets.
+        builder.Property(e => e.DoNotContact).HasDefaultValue(false);
+
+        builder.HasOne(e => e.Salutation).WithMany().HasForeignKey(e => e.SalutationId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(e => e.Account).WithMany(a => a.Contacts).HasForeignKey(e => e.AccountId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(e => e.ImportBatch).WithMany().HasForeignKey(e => e.ImportBatchId).OnDelete(DeleteBehavior.Restrict);

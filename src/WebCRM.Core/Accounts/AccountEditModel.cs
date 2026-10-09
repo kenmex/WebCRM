@@ -24,8 +24,18 @@ public sealed class AccountEditModel
     [Required(ErrorMessage = "Status is required.")]
     public int? AccountStatusId { get; set; }
 
+    [StringLength(200)]
+    public string? LegalName { get; set; }
+
     [StringLength(30)]
     public string? Phone { get; set; }
+
+    [StringLength(Contacts.ContactRules.MaxEmailLength)]
+    [Contacts.ContactEmail]
+    public string? Email { get; set; }
+
+    [StringLength(100)]
+    public string? TaxOffice { get; set; }
 
     [StringLength(300)]
     [Website]

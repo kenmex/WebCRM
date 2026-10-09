@@ -25,6 +25,13 @@ else
 
     <RecordHeader Title="@PageTitleText" EditContext="_editor.Context" IsEditing="_editor.IsEditing" Saving="_editor.IsSaving"
                   OnEdit="BeginEdit" OnSave="SaveAsync" OnCancel="CancelAsync">
+        <StatusChip>
+            @if (_detail is { DoNotContact: true })
+            {
+                <DoNotContactChip Since="_detail.DoNotContactSince" />
+            }
+        </StatusChip>
+
         <Subtitle>
             @if (_detail is not null)
             {
@@ -108,7 +115,9 @@ else
                             }
                         </ReadField>
                     </MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Salutation" Value="@_detail.SalutationName" /></MudItem>
                     <MudItem xs="12" sm="6" md="4"><ReadField Label="Job title" Value="@_detail.JobTitle" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Department" Value="@_detail.Department" /></MudItem>
                     <MudItem xs="12" sm="6" md="4">
                         <ReadField Label="Owner">
                             <OwnerBadge Name="@_detail.OwnerName" IsActive="_detail.OwnerIsActive" />

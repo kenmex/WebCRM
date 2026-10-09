@@ -102,6 +102,8 @@ public static class DatabaseSeeder
     // Starter values so the dropdowns are usable; Admin edits them in the lookups page (P22) later.
     private static readonly string[] AccountStatusNames = ["Prospect", "Active", "Inactive"];
 
+    private static readonly string[] SalutationNames = ["Mr", "Ms", "Dr"];
+
     private static readonly string[] IndustryNames =
     [
         "Construction", "Education", "Energy", "Finance", "Healthcare", "Hospitality", "Manufacturing",
@@ -111,7 +113,8 @@ public static class DatabaseSeeder
     private static async Task EnsureLookupsAsync(CrmDbContext db, ILogger logger, CancellationToken ct)
     {
         var added = await AddMissingAsync(db.AccountStatuses, AccountStatusNames, ct)
-            + await AddMissingAsync(db.Industries, IndustryNames, ct);
+            + await AddMissingAsync(db.Industries, IndustryNames, ct)
+            + await AddMissingAsync(db.Salutations, SalutationNames, ct);
         if (added > 0)
         {
             await db.SaveChangesAsync(ct);

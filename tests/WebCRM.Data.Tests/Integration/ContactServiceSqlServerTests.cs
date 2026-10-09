@@ -35,7 +35,7 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
     {
         _sql = sql;
         _factory = sql.CreateFactory();
-        _service = new ContactService(_factory, new OwnerService(_factory));
+        _service = new ContactService(_factory, new OwnerService(_factory), TimeProvider.System);
     }
 
     private async Task EnsureReferenceDataAsync()
@@ -346,6 +346,79 @@ public class ContactServiceSqlServerTests : IClassFixture<SqlServerFixture>
             .Status.ShouldBe(SaveStatus.Conflict);
         (await _service.SaveAsync(stale.Clone(), _admin, new SaveOptions { Overwrite = true }, Ct))
             .Status.ShouldBe(SaveStatus.Saved);
+    }
+
+    // ---- Department, salutation, Do not contact ----
+
+    private async Task<int> AddSalutationAsync(string name)
+    {
+        await using var db = _factory.CreateDbContext();
+        var salutation = new Salutation { Name = _prefix + name };
+        db.Salutations.Add(salutation);
+        await db.SaveChangesAsync(Ct);
+        return salutation.Id;
+    }
+
+    [Fact]
+    public async Task The_new_contact_fields_round_trip_through_sql_and_Do_not_contact_defaults_to_off()
+    {
+        await EnsureReferenceDataAsync();
+        var acme = await AddAccountAsync("Acme");
+        var dr = await AddSalutationAsync("Dr");
+
+        var model = await _service.NewAsync(_alice, acme, Ct);
+        model.LastName = _prefix + "Smith";
+        model.Department = "Purchasing";
+        model.SalutationId = dr;
+        model.DoNotContact = true;
+        var saved = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        saved.Status.ShouldBe(SaveStatus.Saved);
+        var detail = (await _service.GetAsync(saved.Id, _alice, Ct))!;
+        detail.Department.ShouldBe("Purchasing");
+        detail.SalutationName.ShouldBe(_prefix + "Dr");
+        detail.DoNotContact.ShouldBeTrue();
+        detail.DoNotContactSince.ShouldNotBeNull();
+        (DateTime.UtcNow - detail.DoNotContactSince.Value).ShouldBeLessThan(TimeSpan.FromMinutes(5));
+
+        // A contact inserted without the column gets the database default (off, no date).
+        var plain = await AddContactAsync("Plain", _prefix + "Plain", acme);
+        var plainDetail = (await _service.GetAsync(plain, _alice, Ct))!;
+        plainDetail.DoNotContact.ShouldBeFalse();
+        plainDetail.DoNotContactSince.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task The_foreign_key_refuses_a_salutation_that_does_not_exist_even_when_the_service_is_bypassed()
+    {
+        await EnsureReferenceDataAsync();
+        var acme = await AddAccountAsync("Acme");
+        var id = await AddContactAsync("Anna", _prefix + "Smith", acme);
+
+        await using var db = _factory.CreateDbContext();
+        (await db.Contacts.SingleAsync(c => c.Id == id, Ct)).SalutationId = 999_999;
+
+        var ex = await Should.ThrowAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
+        ex.InnerException!.Message.ShouldContain("FK_Contacts_Salutations_SalutationId");
+    }
+
+    [Fact]
+    public async Task The_Do_not_contact_filter_works_in_sql_and_the_flag_reaches_the_list()
+    {
+        await EnsureReferenceDataAsync();
+        var acme = await AddAccountAsync("Acme");
+        var marked = await _service.NewAsync(_alice, acme, Ct);
+        marked.LastName = _prefix + "Marked";
+        marked.DoNotContact = true;
+        await _service.SaveAsync(marked, _alice, cancellationToken: Ct);
+        await AddContactAsync("Free", _prefix + "Free", acme);
+
+        var onlyMarked = await _service.SearchAsync(All() with { DoNotContact = true }, _alice, Ct);
+        var onlyFree = await _service.SearchAsync(All() with { DoNotContact = false }, _alice, Ct);
+
+        onlyMarked.Items.Select(i => (i.FullName, i.DoNotContact)).ShouldBe([(_prefix + "Marked", true)]);
+        onlyFree.Items.Select(i => (i.FullName, i.DoNotContact)).ShouldBe([("Free " + _prefix + "Free", false)]);
+        (await _service.SearchAsync(All(), _alice, Ct)).TotalCount.ShouldBe(2);
     }
 
     private async Task<int> TeamIdAsync()

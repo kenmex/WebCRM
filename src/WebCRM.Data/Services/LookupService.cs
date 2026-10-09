@@ -19,6 +19,7 @@ public sealed class LookupService(IDbContextFactory<CrmDbContext> factory) : ILo
             LookupKind.LeadStatus => await QueryAsync<LeadStatus>(db, currentId, cancellationToken),
             LookupKind.ActivityType => await QueryAsync<ActivityType>(db, currentId, cancellationToken),
             LookupKind.LostReason => await QueryAsync<LostReason>(db, currentId, cancellationToken),
+            LookupKind.Salutation => await QueryAsync<Salutation>(db, currentId, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
     }

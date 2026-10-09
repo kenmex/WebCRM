@@ -21,6 +21,7 @@ public sealed record ContactQuery(
     int? AccountId = null,
     string? OwnerId = null,
     bool? HasEmail = null,
+    bool? DoNotContact = null,
     ContactSort Sort = ContactSort.Name,
     bool Descending = false,
     int Page = 1,
@@ -42,7 +43,8 @@ public sealed record ContactListItem(
     string OwnerId,
     string? OwnerName,
     bool OwnerIsActive,
-    DateTime? LastActivityAt);
+    DateTime? LastActivityAt,
+    bool DoNotContact = false);
 
 /// <summary>A contact as shown in the read-mode header card (P11).</summary>
 public sealed record ContactDetail(
@@ -61,7 +63,12 @@ public sealed record ContactDetail(
     bool OwnerIsActive,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    byte[] RowVersion)
+    byte[] RowVersion,
+    string? Department = null,
+    int? SalutationId = null,
+    string? SalutationName = null,
+    bool DoNotContact = false,
+    DateTime? DoNotContactSince = null)
 {
     public ContactEditModel ToEditModel() => new()
     {
@@ -73,6 +80,9 @@ public sealed record ContactDetail(
         Email = Email,
         Phone = Phone,
         Mobile = Mobile,
+        Department = Department,
+        SalutationId = SalutationId,
+        DoNotContact = DoNotContact,
         OwnerId = OwnerId,
         RowVersion = RowVersion,
     };
@@ -96,8 +106,13 @@ public sealed class ContactEditModel
     [Required(ErrorMessage = "Choose an account.")]
     public int? AccountId { get; set; }
 
+    public int? SalutationId { get; set; }
+
     [StringLength(100)]
     public string? JobTitle { get; set; }
+
+    [StringLength(100)]
+    public string? Department { get; set; }
 
     [StringLength(ContactRules.MaxEmailLength)]
     [ContactEmail]
@@ -108,6 +123,9 @@ public sealed class ContactEditModel
 
     [StringLength(30)]
     public string? Mobile { get; set; }
+
+    /// <summary>The person asked not to be contacted. The service stamps DoNotContactSince.</summary>
+    public bool DoNotContact { get; set; }
 
     [Required(ErrorMessage = "Owner is required.")]
     public string? OwnerId { get; set; }

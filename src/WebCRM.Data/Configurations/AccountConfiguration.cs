@@ -27,7 +27,10 @@ public class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.Property(e => e.Name).HasMaxLength(200).UseCollation(AccentInsensitive);
         builder.Property(e => e.VatNumber).HasMaxLength(20);
+        builder.Property(e => e.LegalName).HasMaxLength(200).UseCollation(AccentInsensitive);
         builder.Property(e => e.Phone).HasMaxLength(30);
+        builder.Property(e => e.Email).HasMaxLength(254).UseCollation(AccentInsensitive);
+        builder.Property(e => e.TaxOffice).HasMaxLength(100);
         builder.Property(e => e.Website).HasMaxLength(300);
 
         builder.HasOne(e => e.Industry).WithMany().HasForeignKey(e => e.IndustryId).OnDelete(DeleteBehavior.Restrict);

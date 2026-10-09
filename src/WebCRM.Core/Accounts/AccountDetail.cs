@@ -16,7 +16,10 @@ public sealed record AccountDetail(
     bool OwnerIsActive,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    byte[] RowVersion)
+    byte[] RowVersion,
+    string? LegalName = null,
+    string? Email = null,
+    string? TaxOffice = null)
 {
     public AccountEditModel ToEditModel() => new()
     {
@@ -26,6 +29,9 @@ public sealed record AccountDetail(
         IndustryId = IndustryId,
         AccountStatusId = AccountStatusId,
         Phone = Phone,
+        LegalName = LegalName,
+        Email = Email,
+        TaxOffice = TaxOffice,
         Website = Website,
         OwnerId = OwnerId,
         RowVersion = RowVersion,

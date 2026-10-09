@@ -34,6 +34,7 @@ public class CrmDbContext(DbContextOptions<CrmDbContext> options) : IdentityDbCo
     public DbSet<ActivityType> ActivityTypes => Set<ActivityType>();
     public DbSet<AccountStatus> AccountStatuses => Set<AccountStatus>();
     public DbSet<LostReason> LostReasons => Set<LostReason>();
+    public DbSet<Salutation> Salutations => Set<Salutation>();
 
     // System tables
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();

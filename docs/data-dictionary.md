@@ -20,11 +20,14 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
 | Name | nvarchar(200) AI | no |  | Unique among active accounts; similar names warned |
+| LegalName | nvarchar(200) AI | yes |  | Registered name when it differs from the trading name in Name. Not unique, not checked for similar names; included in the quick search |
 | VatNumber | nvarchar(20) | yes |  | Shown as "VAT / Tax ID"; works for any country. Stored normalised: upper case, no spaces, dots or dashes; 4 to 20 letters or digits (check constraint `CK_Accounts_VatNumber`, binary collation so lower case is rejected). No prefix rule, except `EL` (Greece): exactly 9 digits and a correct ΑΦΜ check digit (first 8 digits weighted 256 down to 2, sum mod 11 mod 10 = 9th digit; 000000000 rejected; the check digit is checked in code, the constraint checks the shape). A Greek-letter `ΕΛ` prefix is stored as `EL`. A bare 9-digit number becomes `EL` + digits only when `CompanySetting.DefaultCountryCode` is `GR`; otherwise it is stored as typed (a US EIN is 9 digits too). Unique when filled, among active accounts (compared after normalising) |
 | IndustryId | int | yes |  | FK Industry |
 | AccountStatusId | int | no | first status | FK AccountStatus |
 | Phone | nvarchar(30) | yes |  |  |
+| Email | nvarchar(254) AI | yes |  | The company's general address (not a person). Same rule as Contact.Email: stored trimmed and lower case, one `@`, a domain with a dot, no spaces. No uniqueness check. Shown as a `mailto:` link; included in the quick search |
 | Website | nvarchar(300) | yes |  | Valid absolute http or https URL. A missing scheme is not an error: `https://` is added on save (`mexdb.com` is stored as `https://mexdb.com`) |
+| TaxOffice | nvarchar(100) | yes |  | Shown as "Tax office (ΔΟΥ)". Free text; the office that issues the VAT / Tax ID |
 | OwnerId | nvarchar(450) | no | creator | FK user; index (OwnerId, IsActive) |
 | ImportBatchId | int | yes |  | FK ImportBatch, for import rollback |
 
@@ -43,14 +46,18 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
+| SalutationId | int | yes |  | FK Salutation (Mr, Ms, Dr, ...). Shown before the name in the read view; not part of FullName |
 | FirstName | nvarchar(100) AI | yes |  |  |
 | LastName | nvarchar(100) AI | no |  |  |
 | FullName | computed, persisted |  |  | `CONCAT_WS(' ', FirstName, LastName)`; indexed for search and sort |
 | AccountId | int | no |  | FK Account (required in MVP, D5) |
 | JobTitle | nvarchar(100) | yes |  |  |
+| Department | nvarchar(100) | yes |  | Free text, e.g. "Purchasing" |
 | Email | nvarchar(254) AI | yes |  | Stored trimmed and lower case. Valid format: one `@`, a domain with a dot, no spaces. Duplicates among active contacts are warned, not blocked (compared case-insensitively); indexed |
 | Phone | nvarchar(30) | yes |  | Shown as a `tel:` link |
 | Mobile | nvarchar(30) | yes |  | Shown as a `tel:` link; the Call button uses it when Phone is empty |
+| DoNotContact | bit | no | 0 | The person has asked not to be contacted. Shows a warning chip in the contact header and card, and is a filter on the Contacts list. It does not block saving, calling or emailing: it is a warning for people |
+| DoNotContactSince | datetime2(0) | yes |  | UTC. Set by the service when DoNotContact is switched on (kept while it stays on), cleared when it is switched off. Never edited by hand |
 | OwnerId | nvarchar(450) | no | account owner | FK user; index (OwnerId, IsActive). Defaults to the owner of the contact's account; on create the account owner is always an allowed value, whatever the creator's own assignment rule (Sales: self, Manager: own team). On edit the normal rule applies, and the current owner may stay |
 | ImportBatchId | int | yes |  | FK ImportBatch |
 
@@ -163,7 +170,7 @@ Index: (OwnerId, DoneAt, DueAt) for My tasks and overdue counts.
 | Name | nvarchar(100) | no |  | Unique among active teams |
 | ManagerId | nvarchar(450) | yes |  | FK user with role Manager |
 
-**Lookups**: Industry, LeadSource, LeadStatus, ActivityType, AccountStatus, LostReason (Stage is above)
+**Lookups**: Industry, LeadSource, LeadStatus, ActivityType, AccountStatus, LostReason, Salutation (Stage is above). Salutation is seeded with Mr, Ms, Dr by the start-up seeder
 
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |

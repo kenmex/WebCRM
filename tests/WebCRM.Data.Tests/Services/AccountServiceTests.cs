@@ -568,6 +568,105 @@ public class AccountServiceTests : IDisposable
         result.FieldErrors!.ShouldContainKey(nameof(AccountEditModel.Website));
     }
 
+    // ---- Legal name, email and tax office ----
+
+    [Fact]
+    public async Task Save_stores_the_legal_name_the_lower_cased_email_and_the_tax_office()
+    {
+        var model = Form("Acme");
+        model.LegalName = "  Acme Hellas A.E.  ";
+        model.Email = "  Info@Acme.GR ";
+        model.TaxOffice = " ΔΟΥ Αθηνών ";
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(SaveStatus.Saved);
+        var saved = await _service.GetAsync(result.Id, _alice, Ct);
+        saved!.LegalName.ShouldBe("Acme Hellas A.E.");
+        saved.Email.ShouldBe("info@acme.gr");
+        saved.TaxOffice.ShouldBe("ΔΟΥ Αθηνών");
+    }
+
+    [Fact]
+    public async Task Save_turns_blank_legal_name_email_and_tax_office_into_nothing()
+    {
+        var model = Form("Acme");
+        model.LegalName = " ";
+        model.Email = " ";
+        model.TaxOffice = "";
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        var saved = await _service.GetAsync(result.Id, _alice, Ct);
+        saved!.LegalName.ShouldBeNull();
+        saved.Email.ShouldBeNull();
+        saved.TaxOffice.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("not an email")]
+    [InlineData("a@b")]
+    [InlineData("Acme <info@acme.gr>")]
+    public async Task Save_rejects_an_invalid_account_email_on_that_field(string email)
+    {
+        var model = Form("Acme");
+        model.Email = email;
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(SaveStatus.Invalid);
+        result.FieldErrors![nameof(AccountEditModel.Email)].ShouldBe(WebCRM.Core.Contacts.ContactRules.InvalidEmailMessage);
+    }
+
+    [Fact]
+    public async Task Two_accounts_may_share_an_email_and_a_legal_name()
+    {
+        var first = Form("First");
+        first.Email = "info@shared.gr";
+        first.LegalName = "Shared A.E.";
+        var second = Form("Second");
+        second.Email = "INFO@shared.gr";
+        second.LegalName = "Shared A.E.";
+
+        (await _service.SaveAsync(first, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+        var result = await _service.SaveAsync(second, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(SaveStatus.Saved);
+    }
+
+    [Fact]
+    public async Task The_quick_search_also_finds_legal_names_and_emails()
+    {
+        var model = Form("Acme");
+        model.LegalName = "Hellenic Widgets";
+        model.Email = "orders@widgets.gr";
+        await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+        await AddAsync("Other");
+
+        var byLegalName = await _service.SearchAsync(new AccountQuery(ListScope.All, Search: "Hellenic"), _alice, Ct);
+        var byEmail = await _service.SearchAsync(new AccountQuery(ListScope.All, Search: "widgets.gr"), _alice, Ct);
+
+        byLegalName.Items.Select(i => i.Name).ShouldBe(["Acme"]);
+        byEmail.Items.Select(i => i.Name).ShouldBe(["Acme"]);
+    }
+
+    [Fact]
+    public async Task Editing_an_account_keeps_and_changes_the_new_fields()
+    {
+        var model = Form("Acme");
+        model.LegalName = "Acme A.E.";
+        var id = (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Id;
+
+        var edit = (await _service.GetAsync(id, _alice, Ct))!.ToEditModel();
+        edit.LegalName.ShouldBe("Acme A.E.");
+        edit.TaxOffice = "Kifisia";
+        (await _service.SaveAsync(edit, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+
+        var saved = await _service.GetAsync(id, _alice, Ct);
+        saved!.LegalName.ShouldBe("Acme A.E.");
+        saved.TaxOffice.ShouldBe("Kifisia");
+    }
+
     // ---- Account picker ----
 
     [Fact]

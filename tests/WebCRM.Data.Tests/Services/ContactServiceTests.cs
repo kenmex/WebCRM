@@ -23,6 +23,7 @@ public class ContactServiceTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly string _dbName = Guid.NewGuid().ToString();
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero));
     private readonly InMemoryFactory _factory;
     private readonly ContactService _service;
 
@@ -36,7 +37,7 @@ public class ContactServiceTests
     public ContactServiceTests()
     {
         _factory = new InMemoryFactory(_dbName);
-        _service = new ContactService(_factory, new OwnerService(_factory));
+        _service = new ContactService(_factory, new OwnerService(_factory), _clock);
         Seed();
     }
 
@@ -213,6 +214,136 @@ public class ContactServiceTests
     {
         (await _service.GetDefaultOwnerAsync(_bobAccount, _alice, Ct)).ShouldBe(Bob);
         (await _service.GetDefaultOwnerAsync(9999, _alice, Ct)).ShouldBeNull();
+    }
+
+    // ---- Department, salutation, Do not contact ----
+
+    private async Task<int> AddSalutationAsync(string name, bool active = true)
+    {
+        await using var db = _factory.CreateDbContext();
+        var salutation = new Salutation { Name = name, IsActive = active };
+        db.Salutations.Add(salutation);
+        await db.SaveChangesAsync(Ct);
+        return salutation.Id;
+    }
+
+    [Fact]
+    public async Task Save_stores_the_department_and_the_salutation_and_reads_the_salutation_name_back()
+    {
+        var dr = await AddSalutationAsync("Dr");
+        var model = Form();
+        model.Department = "  Purchasing ";
+        model.SalutationId = dr;
+
+        var result = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        result.Status.ShouldBe(SaveStatus.Saved);
+        var saved = await _service.GetAsync(result.Id, _alice, Ct);
+        saved!.Department.ShouldBe("Purchasing");
+        saved.SalutationId.ShouldBe(dr);
+        saved.SalutationName.ShouldBe("Dr");
+        saved.ToEditModel().SalutationId.ShouldBe(dr);
+    }
+
+    [Fact]
+    public async Task Save_rejects_a_salutation_that_does_not_exist_or_is_inactive_but_lets_an_existing_one_stay()
+    {
+        var retired = await AddSalutationAsync("Prof", active: false);
+
+        var missing = Form();
+        missing.SalutationId = 9999;
+        (await _service.SaveAsync(missing, _alice, cancellationToken: Ct)).FieldErrors!
+            .ShouldContainKey(nameof(ContactEditModel.SalutationId));
+
+        var inactive = Form();
+        inactive.SalutationId = retired;
+        (await _service.SaveAsync(inactive, _alice, cancellationToken: Ct)).FieldErrors!
+            .ShouldContainKey(nameof(ContactEditModel.SalutationId));
+
+        // A contact that already has it keeps it, even after it was deactivated.
+        await using (var db = _factory.CreateDbContext())
+        {
+            var id = await AddAsync("Old");
+            (await db.Contacts.FindAsync([id], Ct))!.SalutationId = retired;
+            await db.SaveChangesAsync(Ct);
+            var edit = (await _service.GetAsync(id, _alice, Ct))!.ToEditModel();
+            edit.Department = "Sales";
+            (await _service.SaveAsync(edit, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+        }
+    }
+
+    [Fact]
+    public async Task Switching_Do_not_contact_on_stamps_the_time_and_it_is_kept_while_it_stays_on()
+    {
+        var model = Form();
+        model.DoNotContact = true;
+        var id = (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Id;
+        var switchedOn = (await _service.GetAsync(id, _alice, Ct))!;
+        switchedOn.DoNotContact.ShouldBeTrue();
+        switchedOn.DoNotContactSince.ShouldBe(new DateTime(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc));
+
+        // Later, an unrelated edit: the date stays.
+        _clock.UtcNow = _clock.UtcNow.AddDays(3);
+        var edit = switchedOn.ToEditModel();
+        edit.JobTitle = "Buyer";
+        await _service.SaveAsync(edit, _alice, cancellationToken: Ct);
+
+        (await _service.GetAsync(id, _alice, Ct))!.DoNotContactSince
+            .ShouldBe(new DateTime(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task Switching_Do_not_contact_off_clears_the_time_and_switching_it_on_again_starts_over()
+    {
+        var model = Form();
+        model.DoNotContact = true;
+        var id = (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Id;
+
+        _clock.UtcNow = _clock.UtcNow.AddDays(1);
+        var off = (await _service.GetAsync(id, _alice, Ct))!.ToEditModel();
+        off.DoNotContact = false;
+        await _service.SaveAsync(off, _alice, cancellationToken: Ct);
+        var cleared = (await _service.GetAsync(id, _alice, Ct))!;
+        cleared.DoNotContact.ShouldBeFalse();
+        cleared.DoNotContactSince.ShouldBeNull();
+
+        _clock.UtcNow = _clock.UtcNow.AddDays(1);
+        var on = cleared.ToEditModel();
+        on.DoNotContact = true;
+        await _service.SaveAsync(on, _alice, cancellationToken: Ct);
+
+        (await _service.GetAsync(id, _alice, Ct))!.DoNotContactSince
+            .ShouldBe(new DateTime(2026, 10, 11, 12, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task A_contact_that_is_not_marked_has_no_date_and_the_date_cannot_be_set_through_the_form()
+    {
+        var id = (await _service.SaveAsync(Form(), _alice, cancellationToken: Ct)).Id;
+
+        var detail = (await _service.GetAsync(id, _alice, Ct))!;
+
+        detail.DoNotContact.ShouldBeFalse();
+        detail.DoNotContactSince.ShouldBeNull();
+        typeof(ContactEditModel).GetProperty("DoNotContactSince").ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task The_Do_not_contact_filter_shows_only_marked_or_only_unmarked_contacts()
+    {
+        var marked = Form("Marked");
+        marked.DoNotContact = true;
+        await _service.SaveAsync(marked, _alice, cancellationToken: Ct);
+        await _service.SaveAsync(Form("Free"), _alice, cancellationToken: Ct);
+        var all = new ContactQuery(WebCRM.Core.Querying.ListScope.All);
+
+        var onlyMarked = await _service.SearchAsync(all with { DoNotContact = true }, _alice, Ct);
+        var onlyFree = await _service.SearchAsync(all with { DoNotContact = false }, _alice, Ct);
+        var everyone = await _service.SearchAsync(all, _alice, Ct);
+
+        onlyMarked.Items.Select(i => i.DoNotContact).ShouldBe([true]);
+        onlyFree.Items.Select(i => i.DoNotContact).ShouldBe([false]);
+        everyone.TotalCount.ShouldBe(2);
     }
 
     // ---- Duplicate email warning ----

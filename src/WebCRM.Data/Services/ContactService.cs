@@ -14,7 +14,8 @@ namespace WebCRM.Data.Services;
 /// Contact rules and queries (P10 list, P11 header, the Contacts tab on P9). Every read goes through
 /// <see cref="ContactAccess.VisibleTo"/>; soft-deleted rows are hidden by the global query filter.
 /// </summary>
-public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwnerService owners) : IContactService
+public sealed class ContactService(
+    IDbContextFactory<CrmDbContext> factory, IOwnerService owners, TimeProvider timeProvider) : IContactService
 {
     private const int MaxWarnings = 5;
 
@@ -88,6 +89,11 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
                 : contacts.Where(c => c.Email == null || c.Email == string.Empty);
         }
 
+        if (query.DoNotContact is { } doNotContact)
+        {
+            contacts = contacts.Where(c => c.DoNotContact == doNotContact);
+        }
+
         return contacts;
     }
 
@@ -104,7 +110,8 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
             c.OwnerId,
             db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.DisplayName).FirstOrDefault(),
             db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.IsActive).FirstOrDefault(),
-            db.Activities.Where(x => x.ContactId == c.Id && x.DoneAt != null).Max(x => x.DoneAt)));
+            db.Activities.Where(x => x.ContactId == c.Id && x.DoneAt != null).Max(x => x.DoneAt),
+            c.DoNotContact));
 
     private static IQueryable<Contact> Sort(CrmDbContext db, IQueryable<Contact> contacts, ContactQuery query)
     {
@@ -156,7 +163,12 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
                 db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.IsActive).FirstOrDefault(),
                 c.CreatedAt,
                 c.UpdatedAt,
-                c.RowVersion))
+                c.RowVersion,
+                c.Department,
+                c.SalutationId,
+                c.Salutation != null ? c.Salutation.Name : null,
+                c.DoNotContact,
+                c.DoNotContactSince))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -198,6 +210,7 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
         model.FirstName = Blank(model.FirstName);
         model.LastName = model.LastName?.Trim() ?? string.Empty;
         model.JobTitle = Blank(model.JobTitle);
+        model.Department = Blank(model.Department);
         model.Email = ContactRules.NormalizeEmail(model.Email);
         model.Phone = Blank(model.Phone);
         model.Mobile = Blank(model.Mobile);
@@ -261,6 +274,15 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
             errors[nameof(ContactEditModel.OwnerId)] = "You cannot assign this owner.";
         }
 
+        // A deactivated salutation may stay on a contact that already has it, but cannot be newly chosen.
+        var currentSalutationId = entity?.SalutationId;
+        if (model.SalutationId is { } salutationId
+            && !await db.Salutations.AnyAsync(
+                s => s.Id == salutationId && (s.IsActive || s.Id == currentSalutationId), cancellationToken))
+        {
+            errors[nameof(ContactEditModel.SalutationId)] = "Choose a valid salutation.";
+        }
+
         if (errors.Count > 0)
         {
             return Invalid(errors);
@@ -294,10 +316,17 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
             }
         }
 
+        // Decided from the state before this save: a contact that was already on keeps its date.
+        var doNotContactSince = NextDoNotContactSince(entity!, model.DoNotContact);
+
         entity!.FirstName = model.FirstName;
         entity.LastName = model.LastName;
         entity.AccountId = accountId;
         entity.JobTitle = model.JobTitle;
+        entity.Department = model.Department;
+        entity.SalutationId = model.SalutationId;
+        entity.DoNotContact = model.DoNotContact;
+        entity.DoNotContactSince = doNotContactSince;
         entity.Email = email;
         entity.Phone = model.Phone;
         entity.Mobile = model.Mobile;
@@ -364,6 +393,14 @@ public sealed class ContactService(IDbContextFactory<CrmDbContext> factory, IOwn
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    /// <summary>
+    /// When Do not contact is switched on the date is now; while it stays on the date is kept; switched off clears it.
+    /// </summary>
+    private DateTime? NextDoNotContactSince(Contact entity, bool switchedOn) =>
+        !switchedOn ? null
+        : entity.DoNotContact && entity.DoNotContactSince is not null ? entity.DoNotContactSince
+        : timeProvider.GetUtcNow().UtcDateTime;
 
     private static SaveResult Invalid(IReadOnlyDictionary<string, string> errors) => new(SaveStatus.Invalid, FieldErrors: errors);
 

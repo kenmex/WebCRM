@@ -8,6 +8,7 @@ public enum LookupKind
     LeadStatus,
     ActivityType,
     LostReason,
+    Salutation,
 }
 
 public sealed record LookupOption(int Id, string Name, bool IsActive);

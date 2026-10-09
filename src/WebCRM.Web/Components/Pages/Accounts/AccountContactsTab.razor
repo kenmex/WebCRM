@@ -15,7 +15,13 @@
             AddText="Add contact" OnAdd="AddContactAsync" EmptyText="This account has no contacts yet.">
     <Columns>
         <TemplateColumn T="ContactListItem" Title="Name">
-            <CellTemplate><strong>@context.Item.FullName</strong></CellTemplate>
+            <CellTemplate>
+                <strong>@context.Item.FullName</strong>
+                @if (context.Item.DoNotContact)
+                {
+                    <DoNotContactChip />
+                }
+            </CellTemplate>
         </TemplateColumn>
         <TemplateColumn T="ContactListItem" Title="Job title">
             <CellTemplate>@context.Item.JobTitle</CellTemplate>
@@ -44,6 +50,10 @@
     <Card Context="c">
         <MudStack Spacing="1">
             <MudText Typo="Typo.subtitle1"><strong>@c.FullName</strong></MudText>
+            @if (c.DoNotContact)
+            {
+                <div><DoNotContactChip /></div>
+            }
             <MudText Typo="Typo.body2" Color="Color.Secondary">@c.JobTitle</MudText>
             <OwnerBadge Name="@c.OwnerName" IsActive="c.OwnerIsActive" />
         </MudStack>

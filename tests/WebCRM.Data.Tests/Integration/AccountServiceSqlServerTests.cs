@@ -360,6 +360,49 @@ public class AccountServiceSqlServerTests : IClassFixture<SqlServerFixture>
         (await check.Contacts.IgnoreQueryFilters().SingleAsync(c => c.AccountId == id, Ct)).IsActive.ShouldBeFalse();
     }
 
+    // ---- Legal name, email, tax office ----
+
+    [Fact]
+    public async Task The_new_account_fields_round_trip_and_the_quick_search_is_accent_insensitive_on_them()
+    {
+        await EnsureReferenceDataAsync();
+        var email = $"info.{_prefix.Trim().ToLowerInvariant()}@acme.gr";
+        var model = await FormAsync("Trading name");
+        model.LegalName = "Αθηναϊκή Εμπορική Α.Ε.";
+        model.Email = "  " + email.ToUpperInvariant() + " ";
+        model.TaxOffice = "ΔΟΥ Κηφισιάς";
+
+        var saved = await _service.SaveAsync(model, _alice, cancellationToken: Ct);
+
+        saved.Status.ShouldBe(SaveStatus.Saved);
+        var detail = (await _service.GetAsync(saved.Id, _alice, Ct))!;
+        detail.LegalName.ShouldBe("Αθηναϊκή Εμπορική Α.Ε.");
+        detail.Email.ShouldBe(email);
+        detail.TaxOffice.ShouldBe("ΔΟΥ Κηφισιάς");
+
+        // D3: no accents, different case, on the legal name; and the email in capitals.
+        foreach (var text in new[] { "αθηναικη εμπορικη", email.ToUpperInvariant() })
+        {
+            var found = await _service.SearchAsync(new AccountQuery(ListScope.All, Search: text), _alice, Ct);
+
+            found.Items.ShouldContain(i => i.Name == _prefix + "Trading name", $"search '{text}'");
+        }
+    }
+
+    [Fact]
+    public async Task Two_accounts_can_share_an_email_and_a_legal_name_in_sql()
+    {
+        await EnsureReferenceDataAsync();
+        var shared = $"shared.{_prefix.Trim().ToLowerInvariant()}@acme.gr";
+        foreach (var name in new[] { "Twin one", "Twin two" })
+        {
+            var model = await FormAsync(name);
+            model.Email = shared;
+            model.LegalName = "Twin A.E.";
+            (await _service.SaveAsync(model, _alice, cancellationToken: Ct)).Status.ShouldBe(SaveStatus.Saved);
+        }
+    }
+
     // ---- Account picker and addresses ----
 
     [Fact]
