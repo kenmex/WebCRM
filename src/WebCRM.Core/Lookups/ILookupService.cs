@@ -11,7 +11,7 @@ public enum LookupKind
     Salutation,
 }
 
-public sealed record LookupOption(int Id, string Name, bool IsActive);
+public sealed record LookupOption(int Id, string Name, bool IsActive, string? SystemCode = null);
 
 public interface ILookupService
 {

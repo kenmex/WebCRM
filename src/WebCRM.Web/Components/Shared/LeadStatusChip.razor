@@ -1,0 +1,19 @@
+@using WebCRM.Core.Entities
+
+@* A lead's status as a coloured chip: Converted green, Disqualified grey, the open statuses blue. *@
+
+<MudChip T="string" Size="Size.Small" Color="ChipColor" Variant="Variant.Filled" data-lead-status="@(Code ?? Name)">@Name</MudChip>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = string.Empty;
+
+    /// <summary>The status's system code, when it has one.</summary>
+    [Parameter] public string? Code { get; set; }
+
+    private Color ChipColor => Code switch
+    {
+        LeadStatus.Converted => Color.Success,
+        LeadStatus.Disqualified => Color.Default,
+        _ => Color.Info,
+    };
+}

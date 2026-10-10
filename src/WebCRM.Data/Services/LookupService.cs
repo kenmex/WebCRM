@@ -31,6 +31,6 @@ public sealed class LookupService(IDbContextFactory<CrmDbContext> factory) : ILo
             .AsNoTracking()
             .Where(l => l.IsActive || l.Id == currentId)
             .OrderBy(l => l.SortOrder).ThenBy(l => l.Name)
-            .Select(l => new LookupOption(l.Id, l.Name, l.IsActive))
+            .Select(l => new LookupOption(l.Id, l.Name, l.IsActive, l.SystemCode))
             .ToListAsync(cancellationToken);
 }

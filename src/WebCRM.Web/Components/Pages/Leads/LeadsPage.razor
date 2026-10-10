@@ -1,0 +1,178 @@
+@page "/leads"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Leads
+@using WebCRM.Core.Lookups
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject ILeadService Leads
+@inject IUserContextProvider UserContexts
+@inject IOwnerService Owners
+@inject ILookupService Lookups
+
+<PageTitle>Leads</PageTitle>
+
+@if (_user is not null)
+{
+    <CrmListPage TDto="LeadListItem" Title="Leads" EntityName="lead" NewHref="leads/new" ListKey="leads"
+                 Scopes="_scopes" DefaultScope="_defaultScope" FilterKeys="_filterKeys"
+                 Load="LoadAsync" RowHref="@(l => $"leads/{l.Id}")">
+        <Filters Context="list">
+            @* Nothing chosen means Open: Converted and Disqualified leads are hidden (docs/page-spec.md, P12). *@
+            <MudSelect T="string" Label="Status" Value="@(list.State.GetFilter(StatusKey) ?? OpenValue)"
+                       ToStringFunc="@StatusText"
+                       ValueChanged="@(v => list.SetFilterAsync(StatusKey, v == OpenValue ? null : v))"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                <MudSelectItem T="string" Value="@OpenValue">Open</MudSelectItem>
+                <MudSelectItem T="string" Value="@AllValue">All statuses</MudSelectItem>
+                @foreach (var status in _statuses)
+                {
+                    <MudSelectItem T="string" Value="@status.Id.ToString()">@status.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <div style="min-width: 180px;">
+                <LookupSelect Kind="LookupKind.LeadSource" Label="Source" Value="list.State.GetInt(SourceKey)"
+                              ValueChanged="@(v => list.SetFilterAsync(SourceKey, v?.ToString()))" />
+            </div>
+            <MudSelect T="string" Label="Owner" Value="@(list.State.GetFilter(OwnerKey))"
+                       ToStringFunc="@(id => _owners.FirstOrDefault(o => o.Id == id)?.DisplayName)"
+                       ValueChanged="@(v => list.SetFilterAsync(OwnerKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var owner in _owners)
+                {
+                    <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
+                }
+            </MudSelect>
+        </Filters>
+
+        <Columns>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
+                <CellTemplate><strong>@context.Item.Name</strong></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="company">Company</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.Company</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="email">Email</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    @* The link opens the mail app; it must not also open the lead, so the click stops here. *@
+                    @if (Links.MailtoUri(context.Item.Email) is { } mail)
+                    {
+                        <a href="@mail" @onclick:stopPropagation="true">@context.Item.Email</a>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="source">Source</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.SourceName</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="status">Status</SortHeader></HeaderTemplate>
+                <CellTemplate><LeadStatusChip Name="@context.Item.StatusName" Code="@context.Item.StatusCode" /></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="owner">Owner</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="LeadListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="created">Created</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    <span title="@TimeDisplay.Format(context.Item.CreatedAt)">@TimeDisplay.Relative(context.Item.CreatedAt, DateTime.UtcNow)</span>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+
+        <Card Context="l">
+            <MudStack Spacing="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1"><strong>@l.Name</strong></MudText>
+                    <LeadStatusChip Name="@l.StatusName" Code="@l.StatusCode" />
+                </MudStack>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @string.Join(" · ", new[] { l.Company, l.Email }.Where(s => !string.IsNullOrEmpty(s)))
+                </MudText>
+                <OwnerBadge Name="@l.OwnerName" IsActive="l.OwnerIsActive" />
+            </MudStack>
+        </Card>
+    </CrmListPage>
+}
+
+@code {
+    private const string StatusKey = "status";
+    private const string SourceKey = "source";
+    private const string OwnerKey = "owner";
+    private const string OpenValue = "open";
+    private const string AllValue = "all";
+
+    private static readonly string[] _filterKeys = [StatusKey, SourceKey, OwnerKey];
+
+    private UserContext? _user;
+    private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
+    private ListScope _defaultScope = ListScope.Mine;
+    private IReadOnlyList<OwnerOption> _owners = [];
+    private IReadOnlyList<LookupOption> _statuses = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        // Sales and Admin: Mine / All. Manager also gets My team, and starts on it.
+        _defaultScope = _user.Role switch
+        {
+            RoleNames.Manager => ListScope.Team,
+            RoleNames.Admin => ListScope.All,
+            _ => ListScope.Mine,
+        };
+        _scopes = _user.IsManager
+            ? [ListScope.Mine, ListScope.Team, ListScope.All]
+            : [ListScope.Mine, ListScope.All];
+
+        _owners = await Owners.GetFilterOptionsAsync();
+        _statuses = await Lookups.GetOptionsAsync(LookupKind.LeadStatus);
+    }
+
+    private string? StatusText(string? value) => value switch
+    {
+        OpenValue => "Open",
+        AllValue => "All statuses",
+        _ => _statuses.FirstOrDefault(s => s.Id.ToString() == value)?.Name,
+    };
+
+    private Task<PagedResult<LeadListItem>> LoadAsync(ListState state, CancellationToken cancellationToken)
+    {
+        var status = state.GetFilter(StatusKey);
+        var sort = state.Sort?.ToLowerInvariant() switch
+        {
+            "name" => LeadSort.Name,
+            "company" => LeadSort.Company,
+            "email" => LeadSort.Email,
+            "source" => LeadSort.Source,
+            "status" => LeadSort.Status,
+            "owner" => LeadSort.Owner,
+            _ => LeadSort.Created,
+        };
+
+        var query = new LeadQuery(
+            Scope: state.Scope,
+            Search: state.Search,
+            StatusId: int.TryParse(status, out var statusId) ? statusId : null,
+            OpenOnly: status != AllValue,
+            SourceId: state.GetInt(SourceKey),
+            OwnerId: state.GetFilter(OwnerKey),
+            Sort: sort,
+            // Newest first until the user picks a column.
+            Descending: state.Sort is null || state.Descending,
+            Page: state.Page);
+
+        return Leads.SearchAsync(query, _user!, cancellationToken);
+    }
+}

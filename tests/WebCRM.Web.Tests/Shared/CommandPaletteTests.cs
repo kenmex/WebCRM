@@ -64,7 +64,7 @@ public class CommandPaletteTests : MudTestContext
         await OpenPaletteAsync();
 
         DialogProvider.WaitForAssertion(() => Items().ShouldBe(
-            ["accounts/new", "contacts/new", "accounts", "contacts", string.Empty, "accounts/3", "contacts/9"]));
+            ["accounts/new", "contacts/new", "leads/new", "accounts", "contacts", "leads", string.Empty, "accounts/3", "contacts/9"]));
         DialogProvider.Markup.ShouldContain("Actions");
         DialogProvider.Markup.ShouldContain("Favourites");
         DialogProvider.Markup.ShouldContain("Recently viewed");
@@ -91,7 +91,7 @@ public class CommandPaletteTests : MudTestContext
 
         Box.Input("n");
 
-        DialogProvider.WaitForAssertion(() => Items().ShouldBe(["accounts/new", "contacts/new", "accounts", "contacts"]));
+        DialogProvider.WaitForAssertion(() => Items().ShouldBe(["accounts/new", "contacts/new", "leads/new", "accounts", "contacts"]));
         Thread.Sleep(300);
         _search.Calls.ShouldBeEmpty();
     }
@@ -143,20 +143,20 @@ public class CommandPaletteTests : MudTestContext
     public async Task Arrow_keys_move_the_highlight_and_Enter_opens_that_entry()
     {
         await OpenPaletteAsync();
-        DialogProvider.WaitForAssertion(() => Items().Count.ShouldBe(5));
+        DialogProvider.WaitForAssertion(() => Items().Count.ShouldBe(7));
 
         Box.KeyDown(Press("ArrowDown"));
         Box.KeyDown(Press("ArrowDown"));
         Box.KeyDown(Press("Enter"));
 
-        Uri.ShouldBe("/accounts");
+        Uri.ShouldBe("/leads/new");
     }
 
     [Fact]
     public async Task ArrowUp_from_the_top_wraps_to_the_last_entry()
     {
         await OpenPaletteAsync();
-        DialogProvider.WaitForAssertion(() => Items().Count.ShouldBe(5));
+        DialogProvider.WaitForAssertion(() => Items().Count.ShouldBe(7));
 
         Box.KeyDown(Press("ArrowUp"));
         Box.KeyDown(Press("Enter"));
@@ -248,8 +248,8 @@ public class CommandPaletteTests : MudTestContext
 public class PaletteCatalogTests
 {
     [Theory]
-    [InlineData("", 5)]
-    [InlineData("new", 2)]
+    [InlineData("", 7)]
+    [InlineData("new", 3)]
     [InlineData("NEW ACC", 1)]
     [InlineData("go contacts", 1)]
     [InlineData("contacts", 1)]

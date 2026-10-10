@@ -7,7 +7,7 @@
 <MudSelect T="int?" Label="@Label" Value="Value" ValueChanged="ValueChanged" For="ValueExpression"
            Required="Required" Clearable="@(!Required)" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
            AnchorOrigin="Origin.BottomCenter" ToStringFunc="OptionText">
-    @foreach (var option in _options)
+    @foreach (var option in _options.Where(o => !IsExcluded(o)))
     {
         <MudSelectItem T="int?" Value="@((int?)option.Id)">@Text(option)</MudSelectItem>
     }
@@ -30,6 +30,15 @@
     [Parameter] public bool Required { get; set; }
 
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// System codes that cannot be picked, e.g. the Converted lead status (only the Convert action sets it). A record
+    /// that already has one of them still shows it.
+    /// </summary>
+    [Parameter] public IReadOnlyCollection<string>? ExcludeSystemCodes { get; set; }
+
+    private bool IsExcluded(LookupOption option) =>
+        option.SystemCode is { } code && ExcludeSystemCodes?.Contains(code) == true && option.Id != Value;
 
     // Text of the selected value comes from here, not from the (lazily rendered) popover items.
     private static string Text(LookupOption option) => option.IsActive ? option.Name : $"{option.Name} (inactive)";

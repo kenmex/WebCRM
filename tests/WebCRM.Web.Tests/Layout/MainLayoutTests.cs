@@ -52,7 +52,7 @@ public class MainLayoutTests : MudTestContext
     }
 
     [Fact]
-    public void The_New_menu_offers_Account_and_Contact_with_their_create_links()
+    public void The_New_menu_offers_Account_Contact_and_Lead_with_their_create_links()
     {
         AddAuthorization().SetAuthorized("alice");
         var cut = RenderLayout();
@@ -63,8 +63,8 @@ public class MainLayoutTests : MudTestContext
         cut.WaitForAssertion(() =>
         {
             var items = cut.FindAll("a.mud-menu-item");
-            items.Select(i => i.TextContent.Trim()).ShouldBe(["Account", "Contact"]);
-            items.Select(i => i.GetAttribute("href")).ShouldBe(["accounts/new", "contacts/new"]);
+            items.Select(i => i.TextContent.Trim()).ShouldBe(["Account", "Contact", "Lead"]);
+            items.Select(i => i.GetAttribute("href")).ShouldBe(["accounts/new", "contacts/new", "leads/new"]);
         });
     }
 }
