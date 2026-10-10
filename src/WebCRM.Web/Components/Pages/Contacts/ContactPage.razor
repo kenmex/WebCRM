@@ -5,10 +5,14 @@
 @using WebCRM.Core
 @using WebCRM.Core.Contacts
 @using WebCRM.Core.Records
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Search
 @using WebCRM.Core.Users
 @using WebCRM.Web.Components.Shared
 @inject IContactService Contacts
 @inject IUserContextProvider UserContexts
+@inject IRecentViewService RecentViews
+@inject ILogger<ContactPage> Logger
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
@@ -52,6 +56,7 @@ else
         <Actions>
             @if (_detail is not null)
             {
+                <StarButton Type="SearchEntity.Contact" RecordId="_detail.Id" />
                 @* On a phone the big buttons in the body do this job. *@
                 @if (CallHref is not null)
                 {
@@ -195,6 +200,8 @@ else
                 Navigation.NotFound();
                 return;
             }
+
+            await RememberVisitAsync();
         }
 
         _crumbs =
@@ -204,6 +211,19 @@ else
         ];
         _loadedFor = key;
         _loading = false;
+    }
+
+    // Feeds the "Recently viewed" lists. A failure here must never stop the page from showing.
+    private async Task RememberVisitAsync()
+    {
+        try
+        {
+            await RecentViews.RecordAsync(_user!, SearchEntity.Contact, Id!.Value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not record the view of contact {Id}", Id);
+        }
     }
 
     // ---- Edit mode ----

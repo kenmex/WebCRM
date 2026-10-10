@@ -6,6 +6,8 @@ using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Records;
 using WebCRM.Core.Lookups;
+using WebCRM.Core.Personal;
+using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Pages.Contacts;
 using WebCRM.Web.Tests.TestSupport;
@@ -22,6 +24,8 @@ public class ContactPageTests : MudTestContext
 
     private readonly FakeContactService _contacts = new();
     private readonly FakeAccountService _accounts = new();
+    private readonly FakeFavouriteService _favourites = new();
+    private readonly FakeRecentViewService _recents = new();
     private readonly NavigationManager _navigation;
 
     public ContactPageTests()
@@ -33,6 +37,8 @@ public class ContactPageTests : MudTestContext
         Services.AddSingleton<IOwnerService>(new FakeOwnerService(
             new OwnerOption("sales-1", "Sam Sales", true), new OwnerOption("owner-2", "Olga Owner", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<IFavouriteService>(_favourites);
+        Services.AddSingleton<IRecentViewService>(_recents);
         Services.AddSingleton<ILookupService>(new FakeLookupService(
             new LookupOption(1, "Mr", true), new LookupOption(2, "Ms", true), new LookupOption(3, "Dr", true)));
         StartProviders();
@@ -371,5 +377,62 @@ public class ContactPageTests : MudTestContext
         Press(cut, "Edit");
 
         cut.WaitForAssertion(() => cut.Find("input[type=checkbox]").HasAttribute("checked").ShouldBeTrue());
+    }
+
+    [Fact]
+    public void Opening_the_page_records_a_recent_view_but_the_new_form_does_not()
+    {
+        RenderNew();
+        _recents.Recorded.ShouldBeEmpty();
+
+        var cut = RenderExisting();
+        cut.WaitForAssertion(() => _recents.Recorded.ShouldBe([(SearchEntity.Contact, 7)]));
+    }
+
+    [Fact]
+    public void A_failing_recent_view_write_does_not_stop_the_page_from_showing()
+    {
+        _recents.FailWith = new InvalidOperationException("db down");
+
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.Find("h1").TextContent.ShouldNotBeNullOrWhiteSpace());
+    }
+
+    [Fact]
+    public void The_star_shows_the_saved_state_and_toggles_both_ways()
+    {
+        _favourites.Starred.Add((SearchEntity.Contact, 7));
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.Find("button[aria-label='Remove from favourites']").GetAttribute("aria-pressed").ShouldBe("true"));
+
+        cut.Find("button[aria-label='Remove from favourites']").Click();
+        cut.WaitForAssertion(() => cut.Find("button[aria-label='Add to favourites']"));
+        cut.Find("button[aria-label='Add to favourites']").Click();
+        cut.WaitForAssertion(() => cut.Find("button[aria-label='Remove from favourites']"));
+
+        _favourites.SetCalls.ShouldBe([(SearchEntity.Contact, 7, false), (SearchEntity.Contact, 7, true)]);
+    }
+
+    [Fact]
+    public void The_star_goes_back_when_saving_it_fails()
+    {
+        var cut = RenderExisting();
+        cut.WaitForElement("button[aria-label='Add to favourites']");
+        _favourites.FailWith = new InvalidOperationException("db down");
+
+        cut.Find("button[aria-label='Add to favourites']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("button[aria-label='Add to favourites']").GetAttribute("aria-pressed").ShouldBe("false"));
+    }
+
+    [Fact]
+    public void There_is_no_star_on_the_new_form()
+    {
+        var cut = RenderNew();
+
+        cut.WaitForElement("h1");
+        cut.FindAll("button[aria-label$='favourites']").ShouldBeEmpty();
     }
 }

@@ -1,0 +1,83 @@
+@using WebCRM.Core.Users
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Search
+@inject IFavouriteService Favourites
+@inject IUserContextProvider UserContexts
+@inject ISnackbar Snackbar
+@inject ILogger<StarButton> Logger
+
+@* The Star toggle of a record page (docs/page-spec.md, favourites). The star flips at once and the save follows;
+   if the save fails the star goes back and a message says so. *@
+
+<MudTooltip Text="@(_starred ? "Remove from favourites" : "Add to favourites")">
+    <MudIconButton Icon="@(_starred ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                   Color="@(_starred ? Color.Warning : Color.Default)"
+                   aria-label="@(_starred ? "Remove from favourites" : "Add to favourites")"
+                   aria-pressed="@(_starred ? "true" : "false")"
+                   Disabled="_busy" OnClick="ToggleAsync" />
+</MudTooltip>
+
+@code {
+    private bool _starred;
+    private bool _busy;
+    private (SearchEntity Type, int Id)? _loadedFor;
+
+    [Parameter, EditorRequired] public SearchEntity Type { get; set; }
+
+    [Parameter, EditorRequired] public int RecordId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == (Type, RecordId))
+        {
+            return;
+        }
+
+        _loadedFor = (Type, RecordId);
+        _starred = false;
+        try
+        {
+            if (await UserContexts.GetAsync() is { } user)
+            {
+                _starred = await Favourites.IsFavouriteAsync(user, Type, RecordId);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The star is a convenience: a failed lookup must not break the page.
+            Logger.LogWarning(ex, "Could not read the favourite state of {Type} {Id}", Type, RecordId);
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var wanted = !_starred;
+        _busy = true;
+        _starred = wanted;
+        try
+        {
+            var user = await UserContexts.GetAsync();
+            if (user is null || !await Favourites.SetAsync(user, Type, RecordId, wanted))
+            {
+                _starred = !wanted;
+                Snackbar.Add("This record is no longer available.", Severity.Warning);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _starred = !wanted;
+            Logger.LogWarning(ex, "Could not save the favourite state of {Type} {Id}", Type, RecordId);
+            Snackbar.Add("Could not update your favourites. Try again.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}
