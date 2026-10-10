@@ -141,6 +141,36 @@ public class SearchServiceSqlServerTests : IClassFixture<SqlServerFixture>
         group.Hits.Single(h => h.Title.EndsWith("Παπαδοπούλου", StringComparison.Ordinal)).Subtitle.ShouldBe($"{_token} Ελληνική Α.Ε. · New");
     }
 
+    // ---- Opportunities ----
+
+    [Fact]
+    public async Task Opportunities_are_found_by_name_or_account_name_and_show_account_and_stage()
+    {
+        await EnsureReferenceDataAsync();
+        var account = await AddAccountAsync($"{_token} Ελληνική Συμβουλευτική");
+        await using (var db = _factory.CreateDbContext())
+        {
+            var wonId = await db.Stages.Where(s => s.IsWon).Select(s => s.Id).SingleAsync(Ct);
+            var firstId = await db.Stages.Where(s => !s.IsWon && !s.IsLost).OrderBy(s => s.SortOrder).Select(s => s.Id).FirstAsync(Ct);
+            db.Opportunities.AddRange(
+                new Opportunity { Name = $"{_token} Πρόγραμμα", AccountId = account, StageId = firstId, CloseDate = new DateOnly(2030, 1, 1), OwnerId = Alice },
+                new Opportunity { Name = $"{_token} Done", AccountId = account, StageId = wonId, CloseDate = new DateOnly(2030, 1, 1), OwnerId = Alice },
+                new Opportunity { Name = $"{_token} Hidden", AccountId = account, StageId = firstId, CloseDate = new DateOnly(2030, 1, 1), OwnerId = Alice, IsActive = false });
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // By name (accents and case ignored) and by the name of the account.
+        foreach (var text in new[] { $"{_token} ΠΡΟΓΡΑΜΜΑ", $"{_token} ελληνικη" })
+        {
+            var results = await _service.SearchAsync(text, 5, _alice, Ct);
+            Titles(results, SearchEntity.Opportunity).ShouldContain($"{_token} Πρόγραμμα", $"opportunity search '{text}'");
+        }
+
+        var group = (await _service.SearchAsync(_token, 5, _alice, Ct)).Groups.Single(g => g.Type == SearchEntity.Opportunity);
+        group.TotalCount.ShouldBe(2); // the soft-deleted one is not found
+        group.Hits.Single(h => h.Title.EndsWith("Done", StringComparison.Ordinal)).Subtitle.ShouldBe($"{_token} Ελληνική Συμβουλευτική · Won");
+    }
+
     // ---- Accent and case insensitivity (D3) ----
 
     [Fact]
@@ -227,7 +257,7 @@ public class SearchServiceSqlServerTests : IClassFixture<SqlServerFixture>
 
         var results = await _service.SearchAsync(_token, 5, _alice, Ct);
 
-        results.Groups.Select(g => g.Type).ShouldBe([SearchEntity.Account, SearchEntity.Contact, SearchEntity.Lead]);
+        results.Groups.Select(g => g.Type).ShouldBe([SearchEntity.Account, SearchEntity.Contact, SearchEntity.Opportunity, SearchEntity.Lead]);
         results.Groups[0].Hits.Single().Subtitle.ShouldBe("Athens");
         results.Groups[1].Hits.ShouldBeEmpty();
         results.Groups[1].TotalCount.ShouldBe(0);

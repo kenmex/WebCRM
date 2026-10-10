@@ -34,7 +34,7 @@ public class MainLayoutTests : MudTestContext
 
         var cut = RenderLayout();
 
-        cut.WaitForAssertion(() => cut.FindAll("input[placeholder='Search accounts, contacts and leads']").Count.ShouldBe(1));
+        cut.WaitForAssertion(() => cut.FindAll("input[placeholder='Search accounts, contacts, opportunities and leads']").Count.ShouldBe(1));
         cut.FindAll("button").ShouldContain(b => b.TextContent.Trim() == "New");
         cut.Find(".page-body").TextContent.ShouldBe("body");
     }
@@ -47,12 +47,12 @@ public class MainLayoutTests : MudTestContext
         var cut = RenderLayout();
 
         cut.Find(".page-body").TextContent.ShouldBe("body");
-        cut.FindAll("input[placeholder='Search accounts, contacts and leads']").ShouldBeEmpty();
+        cut.FindAll("input[placeholder='Search accounts, contacts, opportunities and leads']").ShouldBeEmpty();
         cut.FindAll("button").ShouldNotContain(b => b.TextContent.Trim() == "New");
     }
 
     [Fact]
-    public void The_New_menu_offers_Account_Contact_and_Lead_with_their_create_links()
+    public void The_New_menu_offers_Account_Contact_Lead_and_Opportunity_with_their_create_links()
     {
         AddAuthorization().SetAuthorized("alice");
         var cut = RenderLayout();
@@ -63,8 +63,8 @@ public class MainLayoutTests : MudTestContext
         cut.WaitForAssertion(() =>
         {
             var items = cut.FindAll("a.mud-menu-item");
-            items.Select(i => i.TextContent.Trim()).ShouldBe(["Account", "Contact", "Lead"]);
-            items.Select(i => i.GetAttribute("href")).ShouldBe(["accounts/new", "contacts/new", "leads/new"]);
+            items.Select(i => i.TextContent.Trim()).ShouldBe(["Account", "Contact", "Lead", "Opportunity"]);
+            items.Select(i => i.GetAttribute("href")).ShouldBe(["accounts/new", "contacts/new", "leads/new", "opportunities/new"]);
         });
     }
 }

@@ -15,9 +15,12 @@ public static class PaletteCatalog
         new(ActionsGroup, "New account", null, Icons.Material.Filled.Add, "accounts/new"),
         new(ActionsGroup, "New contact", null, Icons.Material.Filled.Add, "contacts/new"),
         new(ActionsGroup, "New lead", null, Icons.Material.Filled.Add, "leads/new"),
+        new(ActionsGroup, "New opportunity", null, Icons.Material.Filled.Add, "opportunities/new"),
         new(ActionsGroup, "Go to Accounts", null, Icons.Material.Filled.Business, "accounts"),
         new(ActionsGroup, "Go to Contacts", null, Icons.Material.Filled.People, "contacts"),
         new(ActionsGroup, "Go to Leads", null, Icons.Material.Filled.TrackChanges, "leads"),
+        new(ActionsGroup, "Go to Opportunities", null, Icons.Material.Filled.AttachMoney, "opportunities"),
+        new(ActionsGroup, "Go to Pipeline", null, Icons.Material.Filled.ViewKanban, "opportunities/board"),
         new(ActionsGroup, "Go to Home", null, Icons.Material.Filled.Home, string.Empty),
     ];
 

@@ -12,6 +12,7 @@ public static class SearchLinks
         SearchEntity.Account => $"accounts/{hit.Id}",
         SearchEntity.Contact => $"contacts/{hit.Id}",
         SearchEntity.Lead => $"leads/{hit.Id}",
+        SearchEntity.Opportunity => $"opportunities/{hit.Id}",
         _ => throw new ArgumentOutOfRangeException(nameof(hit)),
     };
 
@@ -20,6 +21,8 @@ public static class SearchLinks
     {
         SearchEntity.Account => $"accounts?scope=all&q={Uri.EscapeDataString(query)}",
         SearchEntity.Contact => $"contacts?scope=all&q={Uri.EscapeDataString(query)}",
+        // Won and Lost opportunities stay findable: the list otherwise shows open ones only.
+        SearchEntity.Opportunity => $"opportunities?scope=all&outcome=any&q={Uri.EscapeDataString(query)}",
         // Converted and Disqualified leads stay findable: the list otherwise hides them.
         SearchEntity.Lead => $"leads?scope=all&status=all&q={Uri.EscapeDataString(query)}",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
@@ -31,6 +34,8 @@ public static class SearchLinks
         (SearchEntity.Account, false) => "Account",
         (SearchEntity.Contact, true) => "Contacts",
         (SearchEntity.Contact, false) => "Contact",
+        (SearchEntity.Opportunity, true) => "Opportunities",
+        (SearchEntity.Opportunity, false) => "Opportunity",
         (SearchEntity.Lead, true) => "Leads",
         (SearchEntity.Lead, false) => "Lead",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
@@ -41,6 +46,7 @@ public static class SearchLinks
         SearchEntity.Account => MudBlazor.Icons.Material.Filled.Business,
         SearchEntity.Contact => MudBlazor.Icons.Material.Filled.Person,
         SearchEntity.Lead => MudBlazor.Icons.Material.Filled.TrackChanges,
+        SearchEntity.Opportunity => MudBlazor.Icons.Material.Filled.AttachMoney,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 }

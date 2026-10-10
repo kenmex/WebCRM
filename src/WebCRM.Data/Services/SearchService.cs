@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Leads;
+using WebCRM.Core.Opportunities;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 
@@ -27,10 +28,11 @@ public sealed class SearchService(IDbContextFactory<CrmDbContext> factory) : ISe
         // Each type runs on its own context at the same time (a context runs one query at a time).
         var accounts = SearchAccountsAsync(term, take, user, cancellationToken);
         var contacts = SearchContactsAsync(term, take, user, cancellationToken);
+        var opportunities = SearchOpportunitiesAsync(term, take, user, cancellationToken);
         var leads = SearchLeadsAsync(term, take, user, cancellationToken);
-        await Task.WhenAll(accounts, contacts, leads);
+        await Task.WhenAll(accounts, contacts, opportunities, leads);
 
-        return new SearchResults(term, [accounts.Result, contacts.Result, leads.Result]);
+        return new SearchResults(term, [accounts.Result, contacts.Result, opportunities.Result, leads.Result]);
     }
 
     private async Task<SearchGroup> SearchAccountsAsync(
@@ -128,6 +130,31 @@ public sealed class SearchService(IDbContextFactory<CrmDbContext> factory) : ISe
             .Select(r => new SearchHit(SearchEntity.Lead, r.Id, r.Name, Join(r.Company, r.Status)))
             .ToList();
         return new SearchGroup(SearchEntity.Lead, hits, countTask.Result);
+    }
+
+    private async Task<SearchGroup> SearchOpportunitiesAsync(
+        string term, int take, UserContext user, CancellationToken cancellationToken)
+    {
+        await using var countDb = await factory.CreateDbContextAsync(cancellationToken);
+        await using var pageDb = await factory.CreateDbContextAsync(cancellationToken);
+
+        // Won and Lost opportunities are found too; the stage in the subtitle tells them apart.
+        IQueryable<Core.Entities.Opportunity> Matches(CrmDbContext db) => db.Opportunities.AsNoTracking()
+            .VisibleTo(user)
+            .Where(o => o.Name.Contains(term) || o.Account.Name.Contains(term));
+
+        var countTask = Matches(countDb).CountAsync(cancellationToken);
+        var rowsTask = Matches(pageDb)
+            .OrderBy(o => o.Name.StartsWith(term) ? 0 : 1).ThenBy(o => o.Name).ThenBy(o => o.Id)
+            .Take(take)
+            .Select(o => new { o.Id, o.Name, AccountName = o.Account.Name, Stage = o.Stage.Name })
+            .ToListAsync(cancellationToken);
+        await Task.WhenAll(countTask, rowsTask);
+
+        var hits = rowsTask.Result
+            .Select(r => new SearchHit(SearchEntity.Opportunity, r.Id, r.Name, Join(r.AccountName, r.Stage)))
+            .ToList();
+        return new SearchGroup(SearchEntity.Opportunity, hits, countTask.Result);
     }
 
     private static string? Join(params string?[] parts)

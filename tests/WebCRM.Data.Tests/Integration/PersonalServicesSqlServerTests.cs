@@ -145,6 +145,38 @@ public class PersonalServicesSqlServerTests : IClassFixture<SqlServerFixture>
         recent.ShouldHaveSingleItem().Id.ShouldBe(leadId);
     }
 
+    [Fact]
+    public async Task A_starred_and_a_recently_viewed_opportunity_show_up_with_their_account_and_stage()
+    {
+        await EnsureUsersAsync();
+        var accountId = (await AddAccountsAsync(1))[0];
+        int opportunityId;
+        await using (var db = _factory.CreateDbContext())
+        {
+            var opportunity = new Opportunity
+            {
+                Name = $"PA {_token} Deal",
+                AccountId = accountId,
+                StageId = await db.Stages.Where(s => s.Name == "Proposal").Select(s => s.Id).SingleAsync(Ct),
+                CloseDate = new DateOnly(2030, 1, 1),
+                OwnerId = _alice.UserId,
+            };
+            db.Opportunities.Add(opportunity);
+            await db.SaveChangesAsync(Ct);
+            opportunityId = opportunity.Id;
+        }
+
+        (await Favourites.SetAsync(_alice, SearchEntity.Opportunity, opportunityId, true, Ct)).ShouldBeTrue();
+        await Recents.RecordAsync(_alice, SearchEntity.Opportunity, opportunityId, Ct);
+
+        var starred = await Favourites.ListAsync(_alice, 10, Ct);
+        var recent = await Recents.ListAsync(_alice, 10, Ct);
+
+        starred.ShouldHaveSingleItem()
+            .ShouldBe(new SearchHit(SearchEntity.Opportunity, opportunityId, $"PA {_token} Deal", $"PA {_token} 000 · Proposal"));
+        recent.ShouldHaveSingleItem().Id.ShouldBe(opportunityId);
+    }
+
     // ---- recent views
 
     [Fact]
