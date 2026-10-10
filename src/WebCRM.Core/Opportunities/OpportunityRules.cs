@@ -8,7 +8,8 @@ public static class OpportunityRules
 
     /// <summary>
     /// The stage rules of P15/P16, shared by the board, the stepper and the service:
-    /// probability resets to the stage default unless it was overridden; Won and Lost stamp ClosedAt (and set
+    /// probability resets to the stage default unless it was overridden (Won, Lost and reopening always reset it and
+    /// clear the override); Won and Lost stamp ClosedAt (and set
     /// CloseDate to the actual close date); Lost needs a reason; moving a closed opportunity back to an open stage
     /// needs confirmation and clears ClosedAt and the reason. Changes the entity only when it returns Moved.
     /// </summary>
@@ -42,9 +43,12 @@ public static class OpportunityRules
         }
 
         opportunity.StageId = to.Id;
-        if (!opportunity.ProbabilityOverridden)
+        // Won and Lost always take their stage default (100 and 0), and so does reopening: a hand-typed probability
+        // does not survive a close or a reopen. Between open stages it is kept while it is overridden.
+        if (toClosed || wasClosed || !opportunity.ProbabilityOverridden)
         {
             opportunity.Probability = to.DefaultProbability;
+            opportunity.ProbabilityOverridden = false;
         }
 
         if (toClosed)

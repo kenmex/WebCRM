@@ -90,7 +90,7 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | Amount | decimal(18,2) | no | 0 | Check >= 0 |
 | Currency | char(3) | no | EUR | EUR only in MVP |
 | Probability | decimal(5,2) | no | stage default | Check 0 to 100 |
-| ProbabilityOverridden | bit | no | 0 | Set when the user edits Probability; stage changes then keep it |
+| ProbabilityOverridden | bit | no | 0 | Set when the user edits Probability; moves between open stages then keep it. Cleared (and Probability reset to the stage default) by a move to Won or Lost and by reopening to an open stage |
 | CloseDate | date | no | today + 30 | Expected close |
 | ClosedAt | datetime2(0) | yes |  | Stamped on Won or Lost, cleared on reopen |
 | LostReasonId | int | yes |  | FK LostReason; required when the stage is Lost (service rule) |

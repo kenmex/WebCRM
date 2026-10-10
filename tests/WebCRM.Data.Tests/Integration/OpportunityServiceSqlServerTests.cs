@@ -157,6 +157,48 @@ public class OpportunityServiceSqlServerTests : IClassFixture<SqlServerFixture>
     }
 
     [Fact]
+    public async Task Won_and_Lost_force_their_probability_and_clear_the_override()
+    {
+        await EnsureReferenceDataAsync();
+        var won = await AddAsync("force-won", probability: 33m, overridden: true);
+        var lost = await AddAsync("force-lost", probability: 33m, overridden: true);
+
+        (await _service.MoveStageAsync(Move(won, _won), _alice, Ct)).Status.ShouldBe(MoveStageStatus.Moved);
+        (await _service.MoveStageAsync(Move(lost, _lost, reason: _reasonId), _alice, Ct)).Status.ShouldBe(MoveStageStatus.Moved);
+
+        var savedWon = await ReloadAsync(won.Id);
+        savedWon.Probability.ShouldBe(100m);
+        savedWon.ProbabilityOverridden.ShouldBeFalse();
+        var savedLost = await ReloadAsync(lost.Id);
+        savedLost.Probability.ShouldBe(0m);
+        savedLost.ProbabilityOverridden.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Reopening_resets_to_the_stage_default_and_clears_the_override()
+    {
+        await EnsureReferenceDataAsync();
+        var o = await AddAsync("reopen-reset", stageId: _won, probability: 100m);
+        // A closed opportunity whose probability was edited by hand afterwards.
+        await using (var db = _factory.CreateDbContext())
+        {
+            var row = await db.Opportunities.SingleAsync(x => x.Id == o.Id, Ct);
+            row.Probability = 80m;
+            row.ProbabilityOverridden = true;
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var current = await ReloadAsync(o.Id);
+        var result = await _service.MoveStageAsync(
+            new MoveStageRequest(o.Id, _qualification, current.RowVersion, ConfirmReopen: true), _alice, Ct);
+
+        result.Status.ShouldBe(MoveStageStatus.Moved);
+        var saved = await ReloadAsync(o.Id);
+        saved.Probability.ShouldBe(20m);
+        saved.ProbabilityOverridden.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Move_keeps_an_overridden_probability()
     {
         var o = await AddAsync("override", probability: 33m, overridden: true);

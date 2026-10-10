@@ -52,6 +52,7 @@ Per the Architecture section of `docs/rev2-plan.md`, using `WebCRM.*` names:
 - Small commits with clear messages.
 - After each commit, push to origin.
 - Check CI with gh run watch (GitHub CLI is authenticated).
+- Before pushing, build the whole solution with -warnaserror (as CI does).
 - Tests: see `docs/testing.md`. Timing-based tests are tagged `Performance` and run on demand only.
 - Verify pages with HTTP requests (curl/Invoke-WebRequest) only. Never launch or automate a browser; I check the UI myself.
 - Never use em dashes in any text you write.
