@@ -97,7 +97,7 @@
     }
     else if (IsPhone)
     {
-        <MudTabs @bind-ActivePanelIndex="_activeTab" Rounded="true" PanelClass="pt-3" data-board-tabs="true">
+        <MudTabs @bind-ActivePanelIndex="_activeTab" Rounded="true" TabPanelsClass="pt-3" data-board-tabs="true">
             @foreach (var column in _columns)
             {
                 <MudTabPanel Text="@($"{column.Stage.Name} ({column.Count})")" ID="@column.Stage.Id">
