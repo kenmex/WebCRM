@@ -6,6 +6,7 @@ using Shouldly;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Lookups;
+using WebCRM.Core.Opportunities;
 using WebCRM.Core.Personal;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
@@ -39,6 +40,7 @@ public class AccountPageTests : MudTestContext
         Services.AddSingleton<IFavouriteService>(_favourites);
         Services.AddSingleton<IRecentViewService>(_recents);
         Services.AddSingleton<IContactService>(_contacts);
+        Services.AddSingleton<IOpportunityService>(new FakeOpportunityService());
         Services.AddSingleton<IAccountAddressService>(_addresses);
         StartProviders();
 
@@ -190,14 +192,14 @@ public class AccountPageTests : MudTestContext
         DialogProvider.WaitForAssertion(() => DialogProvider.Markup.ShouldContain(LeaveDialog));
     }
 
-    // ---- Tabs (RecordTabs): Overview and Contacts, loaded when first opened ----
+    // ---- Tabs (RecordTabs): Overview, Contacts and Opportunities, loaded when first opened ----
 
     [Fact]
-    public void An_existing_account_shows_the_Overview_and_Contacts_tabs_and_loads_contacts_only_when_opened()
+    public void An_existing_account_shows_the_Overview_Contacts_and_Opportunities_tabs_and_loads_contacts_only_when_opened()
     {
         var cut = RenderExisting();
 
-        cut.WaitForAssertion(() => cut.FindAll(".mud-tab").Select(t => t.TextContent.Trim()).ShouldBe(["Overview", "Contacts"]));
+        cut.WaitForAssertion(() => cut.FindAll(".mud-tab").Select(t => t.TextContent.Trim()).ShouldBe(["Overview", "Contacts", "Opportunities"]));
         cut.WaitForAssertion(() => cut.Markup.ShouldContain("Athens")); // the Overview tab is open
         _addresses.Gets.ShouldBe(1);
         _contacts.Searches.ShouldBeEmpty(); // the Contacts tab has not been opened
@@ -206,6 +208,15 @@ public class AccountPageTests : MudTestContext
 
         cut.WaitForAssertion(() => _contacts.Searches.Count.ShouldBe(1));
         _contacts.Searches[0].AccountId.ShouldBe(7);
+    }
+
+    [Fact]
+    public void The_account_page_offers_New_opportunity_with_the_account_filled_in()
+    {
+        var cut = RenderExisting();
+
+        cut.WaitForAssertion(() => cut.HasButton("New opportunity").ShouldBeTrue());
+        cut.ButtonByText("New opportunity").GetAttribute("href").ShouldBe("opportunities/new?accountId=7");
     }
 
     [Fact]

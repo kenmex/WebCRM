@@ -408,6 +408,43 @@ public class OpportunityServiceSqlServerTests : IClassFixture<SqlServerFixture>
         board.Single(c => c.Stage.Id == _lost).Count.ShouldBe(0);
     }
 
+    // ---- Account tab ----
+
+    [Fact]
+    public async Task The_account_tab_lists_open_first_by_close_date_then_won_and_lost_latest_first()
+    {
+        await AddAsync("open-late", closeDate: new DateOnly(2031, 1, 1));
+        await AddAsync("open-soon", stageId: _qualification, closeDate: new DateOnly(2030, 1, 1));
+        await AddAsync("won-old", stageId: _won, closeDate: new DateOnly(2029, 1, 1));
+        await AddAsync("lost-new", stageId: _lost, closeDate: new DateOnly(2029, 6, 1));
+        await AddAsync("gone", closeDate: new DateOnly(2030, 6, 1), active: false);
+
+        var rows = await _service.ListForAccountAsync(_accountId, _alice, Ct);
+
+        rows.Select(r => r.Name).ShouldBe(
+            [_prefix + "open-soon", _prefix + "open-late", _prefix + "lost-new", _prefix + "won-old"]);
+    }
+
+    [Fact]
+    public async Task Contact_options_are_the_contacts_of_that_account_only()
+    {
+        await EnsureReferenceDataAsync();
+        await using (var db = _factory.CreateDbContext())
+        {
+            var statusId = await db.AccountStatuses.Select(s => s.Id).FirstAsync(Ct);
+            var other = new Account { Name = _prefix + "Elsewhere", AccountStatusId = statusId, OwnerId = Alice };
+            other.Contacts.Add(new Contact { FirstName = "Eve", LastName = _prefix + "Other", OwnerId = Alice });
+            db.Accounts.Add(other);
+            var mine = await db.Accounts.SingleAsync(a => a.Id == _accountId, Ct);
+            mine.Contacts.Add(new Contact { FirstName = "Ann", LastName = _prefix + "Mine", OwnerId = Alice });
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var options = await _service.GetContactOptionsAsync(_accountId, cancellationToken: Ct);
+
+        options.Select(o => o.Name).ShouldBe([$"Ann {_prefix}Mine"]);
+    }
+
     // ---- Save ----
 
     [Fact]

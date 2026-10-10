@@ -47,6 +47,9 @@ else
             @if (_detail is not null)
             {
                 <StarButton Type="SearchEntity.Account" RecordId="_detail.Id" />
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachMoney" Href="@($"opportunities/new?accountId={_detail.Id}")">
+                    New opportunity
+                </MudButton>
                 <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
                     Delete
                 </MudButton>
@@ -235,7 +238,13 @@ else
     {
         RenderFragment overview = @<AccountOverviewTab AccountId="accountId" />;
         RenderFragment contacts = @<AccountContactsTab AccountId="accountId" />;
-        return [new RecordTabItem("Overview", overview), new RecordTabItem("Contacts", contacts)];
+        RenderFragment opportunities = @<AccountOpportunitiesTab AccountId="accountId" />;
+        return
+        [
+            new RecordTabItem("Overview", overview),
+            new RecordTabItem("Contacts", contacts),
+            new RecordTabItem("Opportunities", opportunities),
+        ];
     }
 
     // ---- Edit mode ----

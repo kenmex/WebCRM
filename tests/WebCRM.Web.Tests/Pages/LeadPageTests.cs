@@ -250,7 +250,8 @@ public class LeadPageTests : MudTestContext
         cut.HasButton("Delete").ShouldBeFalse();
         cut.Find("a[href='accounts/11']").TextContent.ShouldContain("Acme Hellas");
         cut.Find("a[href='contacts/12']").TextContent.ShouldContain("Maria Papadopoulou");
-        cut.Find("[data-converted-opportunity]").TextContent.ShouldContain("Acme deal");
+        cut.Find("a[data-converted-opportunity]").TextContent.ShouldContain("Acme deal");
+        cut.Find("a[data-converted-opportunity]").GetAttribute("href").ShouldBe("opportunities/13");
         cut.Find("[data-lead-status='CONVERTED']").TextContent.ShouldBe("Converted");
         cut.Find("[data-lead-converted]").TextContent.ShouldContain("5 Oct 2026 12:00");
     }

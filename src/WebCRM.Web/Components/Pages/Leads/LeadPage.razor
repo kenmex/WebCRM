@@ -60,10 +60,9 @@ else
                         {
                             <MudLink Href="@($"contacts/{_detail.ConvertedContactId}")">Contact: @_detail.ConvertedContactName</MudLink>
                         }
-                        @* Becomes a link when the Opportunities pages exist. *@
                         @if (_detail.ConvertedOpportunityName is not null)
                         {
-                            <MudText Typo="Typo.body2" Inline="true" data-converted-opportunity="true">Opportunity: @_detail.ConvertedOpportunityName</MudText>
+                            <MudLink Href="@($"opportunities/{_detail.ConvertedOpportunityId}")" data-converted-opportunity="true">Opportunity: @_detail.ConvertedOpportunityName</MudLink>
                         }
                     </MudStack>
                 </MudAlert>

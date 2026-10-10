@@ -1,0 +1,77 @@
+@using WebCRM.Core
+@using WebCRM.Core.Opportunities
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IOpportunityService Opportunities
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject TimeProvider Clock
+
+@* The Opportunities tab on the account page (docs/page-spec.md, P9): open ones first (earliest close date), then won
+   and lost. + New opportunity opens the new form with this account already filled in. *@
+
+<ChildPanel TDto="OpportunityListItem" Load="LoadAsync" RowHref="@(o => $"opportunities/{o.Id}")"
+            AddText="New opportunity" OnAdd="AddAsync" EmptyText="This account has no opportunities yet.">
+    <Columns>
+        <TemplateColumn T="OpportunityListItem" Title="Name">
+            <CellTemplate><strong>@context.Item.Name</strong></CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="OpportunityListItem" Title="Stage">
+            <CellTemplate><StageChip Name="@context.Item.StageName" IsWon="context.Item.IsWon" IsLost="context.Item.IsLost" /></CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="OpportunityListItem" Title="Amount" HeaderStyle="text-align: right;" CellStyle="text-align: right;">
+            <CellTemplate>@Money.Format(context.Item.Amount)</CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="OpportunityListItem" Title="Close date">
+            <CellTemplate>
+                <span data-overdue="@(context.Item.IsOverdue(Today) ? "true" : null)"
+                      style="@(context.Item.IsOverdue(Today) ? "color: var(--mud-palette-error); font-weight: 600;" : null)">@context.Item.CloseDate.ToString("d MMM yyyy")</span>
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="OpportunityListItem" Title="Owner">
+            <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <Card Context="o">
+        <MudStack Spacing="1">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.subtitle1"><strong>@o.Name</strong></MudText>
+                <StageChip Name="@o.StageName" IsWon="o.IsWon" IsLost="o.IsLost" />
+            </MudStack>
+            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.body2">@Money.Format(o.Amount)</MudText>
+                <MudText Typo="Typo.body2" Color="@(o.IsOverdue(Today) ? Color.Error : Color.Default)">@o.CloseDate.ToString("d MMM yyyy")</MudText>
+            </MudStack>
+            <OwnerBadge Name="@o.OwnerName" IsActive="o.OwnerIsActive" />
+        </MudStack>
+    </Card>
+</ChildPanel>
+
+@code {
+    private UserContext? _user;
+
+    [Parameter, EditorRequired] public int AccountId { get; set; }
+
+    /// <summary>Today in Europe/Athens, for the overdue highlight.</summary>
+    private DateOnly Today => DateOnly.FromDateTime(TimeDisplay.ToLocal(Clock.GetUtcNow().UtcDateTime));
+
+    // The service returns the whole tab (open first, then won and lost): an account has few opportunities.
+    private async Task<PagedResult<OpportunityListItem>> LoadAsync(int page, CancellationToken cancellationToken)
+    {
+        _user ??= await UserContexts.GetAsync(cancellationToken);
+        if (_user is null || page > 1)
+        {
+            return PagedResult<OpportunityListItem>.Empty;
+        }
+
+        var rows = await Opportunities.ListForAccountAsync(AccountId, _user, cancellationToken);
+        return new PagedResult<OpportunityListItem>(rows, rows.Count);
+    }
+
+    private Task AddAsync()
+    {
+        Navigation.NavigateTo($"opportunities/new?accountId={AccountId}");
+        return Task.CompletedTask;
+    }
+}
