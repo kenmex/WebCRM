@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using Shouldly;
+using WebCRM.Core.Personal;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Shared;
@@ -14,12 +15,16 @@ namespace WebCRM.Web.Tests.Shared;
 public class GlobalSearchTests : MudTestContext
 {
     private readonly FakeSearchService _search = new();
+    private readonly FakeFavouriteService _favourites = new();
+    private readonly FakeRecentViewService _recents = new();
     private readonly NavigationManager _navigation;
 
     public GlobalSearchTests()
     {
         Services.AddSingleton<ISearchService>(_search);
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<IFavouriteService>(_favourites);
+        Services.AddSingleton<IRecentViewService>(_recents);
         StartProviders();
         _navigation = Services.GetRequiredService<NavigationManager>();
         _navigation.NavigateTo("/");
@@ -283,5 +288,93 @@ public class GlobalSearchTests : MudTestContext
 
         Uri.ShouldBe("/accounts/1");
         cut.WaitForAssertion(() => cut.FindAll("input").ShouldBeEmpty());
+    }
+
+    // ---- Favourites and recently viewed (nothing typed)
+
+    private static SearchHit Hit(SearchEntity type, int id, string title) => new(type, id, title, null);
+
+    private void Focus(IRenderedComponent<GlobalSearch> cut)
+    {
+        Box(cut);
+        cut.Find("[role=search]").TriggerEvent("onfocusin", new FocusEventArgs());
+    }
+
+    [Fact]
+    public void Focusing_the_empty_box_lists_favourites_and_recently_viewed_without_searching()
+    {
+        _favourites.Listed.Add(Hit(SearchEntity.Account, 3, "Starred Co"));
+        _recents.Listed.Add(Hit(SearchEntity.Contact, 9, "Recent Person"));
+        var cut = RenderSearch();
+
+        Focus(cut);
+
+        PopoverProvider.WaitForAssertion(() =>
+        {
+            Popover.ShouldContain("Favourites");
+            Popover.ShouldContain("Starred Co");
+            Popover.ShouldContain("Recently viewed");
+            Popover.ShouldContain("Recent Person");
+        });
+        HitLinks().ShouldBe(["accounts/3", "contacts/9"]);
+        _search.Calls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void An_empty_box_with_nothing_to_show_explains_how_to_get_entries()
+    {
+        var cut = RenderSearch();
+
+        Focus(cut);
+
+        PopoverProvider.WaitForAssertion(() => Popover.ShouldContain("Star records to find them here"));
+    }
+
+    [Fact]
+    public void Arrow_keys_and_Enter_open_an_entry_of_the_idle_list()
+    {
+        _favourites.Listed.Add(Hit(SearchEntity.Account, 3, "Starred Co"));
+        _recents.Listed.Add(Hit(SearchEntity.Contact, 9, "Recent Person"));
+        var cut = RenderSearch();
+        Focus(cut);
+        PopoverProvider.WaitForAssertion(() => HitLinks().Count.ShouldBe(2));
+
+        Box(cut).KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+        Box(cut).KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+        Box(cut).KeyDown(new KeyboardEventArgs { Key = "Enter" });
+
+        Uri.ShouldBe("/contacts/9");
+    }
+
+    [Fact]
+    public void Typing_replaces_the_idle_list_with_results_and_clearing_brings_it_back()
+    {
+        _favourites.Listed.Add(Hit(SearchEntity.Account, 3, "Starred Co"));
+        _search.OnSearch = (text, _) => Task.FromResult(FakeSearchService.Results(text, accounts: 1));
+        var cut = RenderSearch();
+        Focus(cut);
+        PopoverProvider.WaitForAssertion(() => Popover.ShouldContain("Starred Co"));
+
+        TypeAndWait(cut, "ac", 1);
+        PopoverProvider.WaitForAssertion(() =>
+        {
+            Popover.ShouldContain("Account 1");
+            Popover.ShouldNotContain("Favourites");
+        });
+
+        Box(cut).Input(string.Empty);
+        PopoverProvider.WaitForAssertion(() => Popover.ShouldContain("Starred Co"));
+    }
+
+    [Fact]
+    public void A_failing_idle_list_shows_an_empty_panel_not_an_error()
+    {
+        _favourites.FailWith = new InvalidOperationException("db down");
+        var cut = RenderSearch();
+
+        Focus(cut);
+
+        PopoverProvider.WaitForAssertion(() => Popover.ShouldContain("Star records to find them here"));
+        Popover.ShouldNotContain("failed");
     }
 }

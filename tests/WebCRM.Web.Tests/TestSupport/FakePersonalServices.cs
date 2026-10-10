@@ -8,6 +8,9 @@ public sealed class FakeFavouriteService : IFavouriteService
 {
     public HashSet<(SearchEntity Type, int Id)> Starred { get; } = [];
 
+    /// <summary>What ListAsync returns.</summary>
+    public List<SearchHit> Listed { get; } = [];
+
     public List<(SearchEntity Type, int Id, bool Favourite)> SetCalls { get; } = [];
 
     /// <summary>Set to make the next SetAsync calls fail.</summary>
@@ -36,12 +39,15 @@ public sealed class FakeFavouriteService : IFavouriteService
     }
 
     public Task<IReadOnlyList<SearchHit>> ListAsync(UserContext user, int take = 10, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<SearchHit>>([]);
+        FailWith is null ? Task.FromResult<IReadOnlyList<SearchHit>>(Listed) : Task.FromException<IReadOnlyList<SearchHit>>(FailWith);
 }
 
 public sealed class FakeRecentViewService : IRecentViewService
 {
     public List<(SearchEntity Type, int Id)> Recorded { get; } = [];
+
+    /// <summary>What ListAsync returns.</summary>
+    public List<SearchHit> Listed { get; } = [];
 
     public Exception? FailWith { get; set; }
 
@@ -52,5 +58,5 @@ public sealed class FakeRecentViewService : IRecentViewService
     }
 
     public Task<IReadOnlyList<SearchHit>> ListAsync(UserContext user, int take = 10, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<SearchHit>>([]);
+        Task.FromResult<IReadOnlyList<SearchHit>>(Listed);
 }

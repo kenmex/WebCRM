@@ -2,6 +2,7 @@ using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using WebCRM.Core.Personal;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Layout;
@@ -12,10 +13,15 @@ namespace WebCRM.Web.Tests.Layout;
 /// <summary>The app shell: search and "+ New" are for signed-in users only, and New offers the record types that exist.</summary>
 public class MainLayoutTests : MudTestContext
 {
+    private readonly FakeFavouriteService _favourites = new();
+    private readonly FakeRecentViewService _recents = new();
+
     public MainLayoutTests()
     {
         Services.AddSingleton<ISearchService>(new FakeSearchService());
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<IFavouriteService>(_favourites);
+        Services.AddSingleton<IRecentViewService>(_recents);
     }
 
     // MainLayout renders its own popover, dialog and snackbar providers, so the shared StartProviders() is not used here.

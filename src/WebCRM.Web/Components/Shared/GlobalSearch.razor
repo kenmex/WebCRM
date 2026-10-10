@@ -1,8 +1,11 @@
 @inherits PhoneAwareComponentBase
 @using Microsoft.Extensions.Logging
+@using WebCRM.Core.Personal
 @using WebCRM.Core.Search
 @using WebCRM.Core.Users
 @inject ISearchService Search
+@inject IFavouriteService Favourites
+@inject IRecentViewService RecentViews
 @inject IUserContextProvider UserContexts
 @inject NavigationManager Navigation
 @inject ILogger<GlobalSearch> Logger
@@ -34,7 +37,7 @@ else
 }
 
 @code {
-    private RenderFragment SearchBox => @<div style="position: relative;" role="search">
+    private RenderFragment SearchBox => @<div style="position: relative;" role="search" @onfocusin="OnFocusAsync" @onclick="OnClickAsync">
         <MudTextField T="string" Value="@_text" ValueChanged="OnTextChangedAsync" Immediate="true" DebounceInterval="250"
                       Placeholder="Search accounts and contacts" aria-label="Search" Variant="Variant.Filled" Margin="Margin.Dense"
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
@@ -49,6 +52,33 @@ else
         @if (_error is not null)
         {
             <MudText Class="pa-3" Color="Color.Error">@_error</MudText>
+        }
+        else if (_showIdle)
+        {
+            @if (_favourites.Count == 0 && _recents.Count == 0)
+            {
+                <MudText Class="pa-3" Color="Color.Secondary" role="status">
+                    Type at least 2 characters to search. Star records to find them here.
+                </MudText>
+            }
+
+            @if (_favourites.Count > 0)
+            {
+                <MudText Typo="Typo.overline" Class="px-3 pt-2" Color="Color.Secondary">Favourites</MudText>
+                @for (var i = 0; i < _favourites.Count; i++)
+                {
+                    @HitRow(_favourites[i], i)
+                }
+            }
+
+            @if (_recents.Count > 0)
+            {
+                <MudText Typo="Typo.overline" Class="px-3 pt-2" Color="Color.Secondary">Recently viewed</MudText>
+                @for (var i = 0; i < _recents.Count; i++)
+                {
+                    @HitRow(_recents[i], _favourites.Count + i)
+                }
+            }
         }
         else if (_loading && _results is null)
         {
@@ -67,19 +97,7 @@ else
                     <MudText Typo="Typo.overline" Class="px-3 pt-2" Color="Color.Secondary">@SearchLinks.Label(group.Type)</MudText>
                     @foreach (var hit in group.Hits)
                     {
-                        var index = _flat.IndexOf(hit);
-                        <div role="option" aria-selected="@(index == _active ? "true" : "false")" data-search-hit="@SearchLinks.Record(hit)"
-                             class="@("mud-list-item mud-list-item-clickable px-3 py-1" + (index == _active ? " mud-selected-item" : ""))"
-                             style="cursor: pointer;" @onmousedown="() => OpenHit(hit)" @onmousedown:preventDefault="true">
-                            <MudIcon Icon="@SearchLinks.Icon(hit.Type)" Size="Size.Small" Class="mr-3" />
-                            <div>
-                                <MudText Typo="Typo.body2">@hit.Title</MudText>
-                                @if (hit.Subtitle is not null)
-                                {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@hit.Subtitle</MudText>
-                                }
-                            </div>
-                        </div>
+                        @HitRow(hit, _flat.IndexOf(hit))
                     }
 
                     @if (group.TotalCount > group.Hits.Count)
@@ -98,6 +116,26 @@ else
             }
         }
     </div>;
+
+    private RenderFragment HitRow(SearchHit hit, int index) => @<div role="option" aria-selected="@(index == _active ? "true" : "false")"
+         data-search-hit="@SearchLinks.Record(hit)"
+         class="@("mud-list-item mud-list-item-clickable px-3 py-1" + (index == _active ? " mud-selected-item" : ""))"
+         style="cursor: pointer;" @onmousedown="() => OpenHit(hit)" @onmousedown:preventDefault="true">
+        <MudIcon Icon="@SearchLinks.Icon(hit.Type)" Size="Size.Small" Class="mr-3" />
+        <div>
+            <MudText Typo="Typo.body2">@hit.Title</MudText>
+            @if (hit.Subtitle is not null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@hit.Subtitle</MudText>
+            }
+        </div>
+    </div>;
+
+    // With nothing typed, the box offers the user's favourites and recently viewed records instead of results.
+    private bool _focused;
+    private IReadOnlyList<SearchHit> _favourites = [];
+    private IReadOnlyList<SearchHit> _recents = [];
+    private bool _showIdle => _open && SearchRules.Normalize(_text) is null;
 
     private CancellationTokenSource? _cts;
     private SearchResults? _results;
@@ -121,9 +159,17 @@ else
         if (SearchRules.Normalize(_text) is not { } term)
         {
             _results = null;
-            _flat = [];
-            _open = false;
             _loading = false;
+            if (_focused)
+            {
+                await ShowIdleAsync();
+            }
+            else
+            {
+                _flat = [];
+                _open = false;
+            }
+
             return;
         }
 
@@ -200,8 +246,63 @@ else
 
     // Clicking a result takes focus away from the box first; closing on blur would remove the result before the click
     // lands, which is why results react to mouse-down instead.
+    private async Task OnFocusAsync(FocusEventArgs e)
+    {
+        _focused = true;
+        if (SearchRules.Normalize(_text) is null)
+        {
+            await ShowIdleAsync();
+        }
+    }
+
+    // Esc closes the list while the box keeps focus; clicking the box again brings it back.
+    private async Task OnClickAsync(MouseEventArgs e)
+    {
+        if (!_open && SearchRules.Normalize(_text) is null)
+        {
+            _focused = true;
+            await ShowIdleAsync();
+        }
+    }
+
+    private async Task ShowIdleAsync()
+    {
+        _open = true;
+        _active = -1;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var user = await UserContexts.GetAsync(cts.Token);
+            if (user is not null)
+            {
+                var favourites = await Favourites.ListAsync(user, 10, cts.Token);
+                var recents = await RecentViews.ListAsync(user, 10, cts.Token);
+                if (!cts.IsCancellationRequested)
+                {
+                    _favourites = favourites;
+                    _recents = recents;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            // The lists are a convenience: an empty panel is better than an error bar.
+            Logger.LogWarning(ex, "Could not load favourites and recent records.");
+            _favourites = [];
+            _recents = [];
+        }
+
+        _flat = [.. _favourites, .. _recents];
+        await InvokeAsync(StateHasChanged);
+    }
+
     private Task OnBlurAsync(FocusEventArgs e)
     {
+        _focused = false;
         _open = false;
         _active = -1;
         return Task.CompletedTask;
