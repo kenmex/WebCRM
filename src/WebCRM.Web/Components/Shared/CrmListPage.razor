@@ -18,12 +18,15 @@
 <MudStack Spacing="3">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h4" HtmlTag="h1">@Title</MudText>
-        @if (NewHref is not null)
-        {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="@NewHref">
-                New
-            </MudButton>
-        }
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            @HeaderActions
+            @if (NewHref is not null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="@NewHref">
+                    New
+                </MudButton>
+            }
+        </MudStack>
     </MudStack>
 
     @if (Scopes.Count > 1)
@@ -116,6 +119,10 @@
                     Load more (@_items.Count of @_total)
                 </MudButton>
             }
+            @if (Footer is not null)
+            {
+                <MudPaper Outlined="true" Class="pa-3" data-list-footer="true">@Footer</MudPaper>
+            }
         </MudStack>
     }
     else
@@ -123,10 +130,14 @@
         <MudPaper Outlined="true">
             <CascadingValue Value="(IListController)this" IsFixed="true">
                 <MudDataGrid T="TDto" Items="_items" Loading="_loading" Hover="true" Dense="true" Elevation="0"
-                             RowClick="OnRowClick" RowStyleFunc="@((_, _) => "cursor: pointer;")">
+                             RowClick="OnRowClick" RowStyleFunc="@((item, _) => "cursor: pointer;" + RowStyle?.Invoke(item))">
                     <Columns>@Columns</Columns>
                 </MudDataGrid>
             </CascadingValue>
+            @if (Footer is not null)
+            {
+                <div class="pa-2" style="border-top: 1px solid var(--mud-palette-lines-default);" data-list-footer="true">@Footer</div>
+            }
             @if (_total > 0)
             {
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="pa-2">
@@ -184,6 +195,15 @@
 
     /// <summary>Phone card content: name, two key fields, owner.</summary>
     [Parameter, EditorRequired] public RenderFragment<TDto> Card { get; set; } = default!;
+
+    /// <summary>Buttons next to New in the page header, e.g. a switch to another view of the same records.</summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+
+    /// <summary>Shown under the rows when there are some (totals of the filtered set).</summary>
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    /// <summary>Extra CSS for a desktop row, e.g. a highlight for overdue records. Ends with a semicolon.</summary>
+    [Parameter] public Func<TDto, string?>? RowStyle { get; set; }
 
     /// <summary>Where a row or card opens the record.</summary>
     [Parameter, EditorRequired] public Func<TDto, string> RowHref { get; set; } = default!;

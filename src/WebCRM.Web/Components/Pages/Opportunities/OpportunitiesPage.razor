@@ -1,0 +1,189 @@
+@page "/opportunities"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Opportunities
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IOpportunityService Opportunities
+@inject IUserContextProvider UserContexts
+@inject IOwnerService Owners
+@inject NavigationManager Navigation
+@inject TimeProvider Clock
+
+<PageTitle>Opportunities</PageTitle>
+
+@if (_user is not null)
+{
+    <CrmListPage TDto="OpportunityListItem" Title="Opportunities" EntityName="opportunity" NewHref="opportunities/new"
+                 ListKey="opportunities" Scopes="_scopes" DefaultScope="_defaultScope" FilterKeys="OpportunityFilters.ListKeys"
+                 Load="LoadAsync" RowHref="@(o => $"opportunities/{o.Id}")" RowStyle="RowStyle">
+        <HeaderActions>
+            <MudButtonGroup Variant="Variant.Outlined" Size="Size.Medium">
+                <MudButton Disabled="true" StartIcon="@Icons.Material.Filled.ViewList" aria-current="page">List</MudButton>
+                <MudButton Href="@OpportunityFilters.SwitchTo("opportunities/board", Navigation.Uri)"
+                           StartIcon="@Icons.Material.Filled.ViewKanban" data-switch-to="board">Board</MudButton>
+            </MudButtonGroup>
+        </HeaderActions>
+
+        <Filters Context="list">
+            @* Nothing chosen means Open (docs/page-spec.md, P14). A chosen stage wins over the outcome. *@
+            <MudSelect T="string" Label="Show" Value="@(list.State.GetFilter(OpportunityFilters.OutcomeKey) ?? OpportunityFilters.OpenValue)"
+                       ToStringFunc="@OutcomeText"
+                       ValueChanged="@(v => list.SetFilterAsync(OpportunityFilters.OutcomeKey, v == OpportunityFilters.OpenValue ? null : v))"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 140px;">
+                <MudSelectItem T="string" Value="@OpportunityFilters.OpenValue">Open</MudSelectItem>
+                <MudSelectItem T="string" Value="@OpportunityFilters.WonValue">Won</MudSelectItem>
+                <MudSelectItem T="string" Value="@OpportunityFilters.LostValue">Lost</MudSelectItem>
+                <MudSelectItem T="string" Value="@OpportunityFilters.AnyValue">All</MudSelectItem>
+            </MudSelect>
+            <MudSelect T="string" Label="Stage" Value="@(list.State.GetFilter(OpportunityFilters.StageKey))"
+                       ToStringFunc="@(id => _stages.FirstOrDefault(s => s.Id.ToString() == id)?.Name)"
+                       ValueChanged="@(v => list.SetFilterAsync(OpportunityFilters.StageKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var stage in _stages)
+                {
+                    <MudSelectItem T="string" Value="@stage.Id.ToString()">@stage.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" Label="Owner" Value="@(list.State.GetFilter(OpportunityFilters.OwnerKey))"
+                       ToStringFunc="@(id => _owners.FirstOrDefault(o => o.Id == id)?.DisplayName)"
+                       ValueChanged="@(v => list.SetFilterAsync(OpportunityFilters.OwnerKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var owner in _owners)
+                {
+                    <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker Label="Close from" Date="@OpportunityFilters.ParseDate(list.State.GetFilter(OpportunityFilters.FromKey))?.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(d => list.SetFilterAsync(OpportunityFilters.FromKey, OpportunityFilters.FormatDate(d)))"
+                           Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 170px;" />
+            <MudDatePicker Label="Close to" Date="@OpportunityFilters.ParseDate(list.State.GetFilter(OpportunityFilters.ToKey))?.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(d => list.SetFilterAsync(OpportunityFilters.ToKey, OpportunityFilters.FormatDate(d)))"
+                           Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 170px;" />
+        </Filters>
+
+        <Columns>
+            <TemplateColumn T="OpportunityListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="name">Name</SortHeader></HeaderTemplate>
+                <CellTemplate><strong>@context.Item.Name</strong></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="account">Account</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.AccountName</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="stage">Stage</SortHeader></HeaderTemplate>
+                <CellTemplate><StageChip Name="@context.Item.StageName" IsWon="context.Item.IsWon" IsLost="context.Item.IsLost" /></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false" HeaderStyle="text-align: right;" CellStyle="text-align: right;">
+                <HeaderTemplate><SortHeader Key="amount">Amount</SortHeader></HeaderTemplate>
+                <CellTemplate>@Money.Format(context.Item.Amount)</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false" HeaderStyle="text-align: right;" CellStyle="text-align: right;">
+                <HeaderTemplate><SortHeader Key="probability">Probability</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.Probability.ToString("0.##")%</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false" HeaderStyle="text-align: right;" CellStyle="text-align: right;">
+                <HeaderTemplate><SortHeader Key="weighted">Weighted</SortHeader></HeaderTemplate>
+                <CellTemplate>@Money.Format(context.Item.Weighted)</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="close">Close date</SortHeader></HeaderTemplate>
+                <CellTemplate>
+                    <span data-overdue="@(context.Item.IsOverdue(Today) ? "true" : null)"
+                          style="@(context.Item.IsOverdue(Today) ? "color: var(--mud-palette-error); font-weight: 600;" : null)"
+                          title="@(context.Item.IsOverdue(Today) ? "Overdue" : null)">@context.Item.CloseDate.ToString("d MMM yyyy")</span>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="OpportunityListItem" Sortable="false">
+                <HeaderTemplate><SortHeader Key="owner">Owner</SortHeader></HeaderTemplate>
+                <CellTemplate>@context.Item.OwnerName@(context.Item.OwnerIsActive ? "" : " (inactive)")</CellTemplate>
+            </TemplateColumn>
+        </Columns>
+
+        <Card Context="o">
+            <MudStack Spacing="1" Style="@(o.IsOverdue(Today) ? "border-left: 4px solid var(--mud-palette-error); padding-left: 8px;" : null)"
+                      data-overdue="@(o.IsOverdue(Today) ? "true" : null)">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1"><strong>@o.Name</strong></MudText>
+                    <StageChip Name="@o.StageName" IsWon="o.IsWon" IsLost="o.IsLost" />
+                </MudStack>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@o.AccountName</MudText>
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2">@Money.Format(o.Amount) (@Money.Format(o.Weighted) weighted)</MudText>
+                    <MudText Typo="Typo.body2" Color="@(o.IsOverdue(Today) ? Color.Error : Color.Default)">@o.CloseDate.ToString("d MMM yyyy")</MudText>
+                </MudStack>
+                <OwnerBadge Name="@o.OwnerName" IsActive="o.OwnerIsActive" />
+            </MudStack>
+        </Card>
+
+        <Footer>
+            <MudStack Row="true" Spacing="4" Justify="Justify.FlexEnd" Wrap="Wrap.Wrap" data-totals="true">
+                <MudText Typo="Typo.subtitle2">Total amount: <span data-total="amount">@Money.Format(_totals.Amount)</span></MudText>
+                <MudText Typo="Typo.subtitle2">Weighted: <span data-total="weighted">@Money.Format(_totals.Weighted)</span></MudText>
+            </MudStack>
+        </Footer>
+    </CrmListPage>
+}
+
+@code {
+    private UserContext? _user;
+    private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
+    private ListScope _defaultScope = ListScope.Mine;
+    private IReadOnlyList<OwnerOption> _owners = [];
+    private IReadOnlyList<StageOption> _stages = [];
+    private OpportunityTotals _totals = new(0m, 0m);
+
+    /// <summary>Today in Europe/Athens, for the overdue highlight.</summary>
+    private DateOnly Today => DateOnly.FromDateTime(TimeDisplay.ToLocal(Clock.GetUtcNow().UtcDateTime));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        // Sales and Admin: Mine / All. Manager also gets My team, and starts on it.
+        _defaultScope = _user.Role switch
+        {
+            RoleNames.Manager => ListScope.Team,
+            RoleNames.Admin => ListScope.All,
+            _ => ListScope.Mine,
+        };
+        _scopes = _user.IsManager
+            ? [ListScope.Mine, ListScope.Team, ListScope.All]
+            : [ListScope.Mine, ListScope.All];
+
+        _owners = await Owners.GetFilterOptionsAsync();
+        _stages = await Opportunities.GetStagesAsync();
+    }
+
+    private static string? OutcomeText(string? value) => value switch
+    {
+        OpportunityFilters.WonValue => "Won",
+        OpportunityFilters.LostValue => "Lost",
+        OpportunityFilters.AnyValue => "All",
+        _ => "Open",
+    };
+
+    private string? RowStyle(OpportunityListItem item) =>
+        item.IsOverdue(Today) ? "background-color: var(--mud-palette-error-hover);" : null;
+
+    private async Task<PagedResult<OpportunityListItem>> LoadAsync(ListState state, CancellationToken cancellationToken)
+    {
+        var query = OpportunityFilters.ToListQuery(state);
+
+        // The page and the totals of the whole filtered set load together.
+        var page = Opportunities.SearchAsync(query, _user!, cancellationToken);
+        var totals = Opportunities.GetTotalsAsync(query, _user!, cancellationToken);
+        await Task.WhenAll(page, totals);
+
+        _totals = totals.Result;
+        return page.Result;
+    }
+}

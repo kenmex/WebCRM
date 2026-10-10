@@ -1,0 +1,13 @@
+@* A stage as a coloured chip: Won green, Lost grey, the open stages blue. *@
+
+<MudChip T="string" Size="Size.Small" Color="ChipColor" Variant="Variant.Filled" data-stage="@Name">@Name</MudChip>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = string.Empty;
+
+    [Parameter] public bool IsWon { get; set; }
+
+    [Parameter] public bool IsLost { get; set; }
+
+    private Color ChipColor => IsWon ? Color.Success : IsLost ? Color.Default : Color.Info;
+}
