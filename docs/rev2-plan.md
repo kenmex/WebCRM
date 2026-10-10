@@ -481,3 +481,5 @@ In rough priority order, each a self-contained learning step after the demo is l
 - [x] Pipeline PDF: QuestPDF (decided 8 Oct)
 - [x] Start: Phase 0 started 7 Oct; the pace guide stays a rough reference at about 15 h/week
 - [ ] MonsterASP: verify always-on, WebSockets, database size cap and custom domain mapping before Phase 2 staging
+
+**Known gap until Phase 5 (audit log):** nothing writes `AuditLog` yet; the SaveChanges interceptor that does is a Phase 5 item. Until then stage changes (P15 drag, P16 stepper) are saved correctly but are not audited, so the History tab of P16 and the "audit log records it" part of US4 cannot be met. The Opportunities slice (Phase 4) leaves out the History tab for this reason. `ClosedAt`, `UpdatedAt` and `UpdatedBy` still show when and by whom a record last changed.

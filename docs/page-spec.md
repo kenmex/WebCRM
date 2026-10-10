@@ -227,9 +227,10 @@ One screen that answers "what do I do today and how is the pipeline". Tiles resp
 
 - One column per open stage (from the Stage lookup, by SortOrder) plus collapsed Won and Lost columns at the end. Column header shows count and total value.
 - Card: name, account, amount, close date, owner initials; red edge when the close date has passed.
-- **Drag a card** to another column: stage and probability (stage default) update and the audit log records it, without a page reload (US4). Optimistic UI: the card moves at once and snaps back with an error if the save fails or the row version conflicts.
-- Drop on Won or Lost opens a small dialog (Lost reason required, actual close date defaults to today).
-- Filters: Owner, My team (Manager), Close date range. Cap at 100 cards per column with a "show more" link to P14.
+- **Drag a card** to another column: stage and probability (stage default) update and the audit log records it, without a page reload (US4). *Until the Phase 5 audit interceptor exists, stage changes are saved but not audited (see the known gap in `docs/rev2-plan.md`).* Optimistic UI: the card moves at once and snaps back with an error if the save fails or the row version conflicts.
+- Drop on Won or Lost opens a small dialog (Lost reason required, actual close date defaults to today). The date sets both ClosedAt and CloseDate; a future date is refused.
+- Moving a Won or Lost card back to an open stage asks for confirmation first (it clears ClosedAt and the lost reason). The service enforces this, not only the dialog.
+- Filters: Owner, Close date range, and the same Mine / My team / All scope switch as the lists (My team for Managers). Cap at 100 cards per column with a "show more" link to P14.
 - **Phone**: no drag and drop. Stages become a horizontal swipeable tab strip; each card has a Stage dropdown (US4 acceptance).
 
 * **Live board**: when another user moves, adds or edits a card, it moves on every open board within a second, with a brief highlight. A card you are dragging is never moved under you.
@@ -238,7 +239,8 @@ One screen that answers "what do I do today and how is the pipeline". Tiles resp
 
 - **Header fields**: Name, Account (required), Primary contact (filtered to the account), Stage, Amount, Currency (EUR only in MVP), Probability (defaults from the stage, editable), Close date, Owner, Lost reason (shown only when Lost).
 - Stage shown as a clickable stepper across the header (same rules as dragging on P15).
-- **Tabs**: Activities, Notes, Attachments, History (shows each stage change with date and user).
+- **Tabs**: Activities, Notes, Attachments, History (shows each stage change with date and user). *History needs the Phase 5 audit interceptor; the Opportunities slice ships without these tabs.*
+- On an existing opportunity the Stage is changed only through the stepper (the form field is read-only), so the form and the stepper cannot disagree. A new opportunity picks an open stage in the form.
 - **Rule**: moving to a Won or Lost stage stamps ClosedAt; moving back to an open stage clears it and asks for confirmation.
 
 ### P17: My tasks

@@ -3,6 +3,7 @@ using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Leads;
 using WebCRM.Core.Lookups;
+using WebCRM.Core.Opportunities;
 using WebCRM.Core.Personal;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
@@ -20,6 +21,7 @@ public static class DataServiceCollectionExtensions
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IContactService, ContactService>();
         services.AddScoped<ILeadService, LeadService>();
+        services.AddScoped<IOpportunityService, OpportunityService>();
         services.AddScoped<IAccountAddressService, AccountAddressService>();
         services.AddScoped<ISearchService, SearchService>();
         services.AddScoped<IFavouriteService, FavouriteService>();
