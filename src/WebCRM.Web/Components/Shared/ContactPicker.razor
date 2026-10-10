@@ -1,0 +1,55 @@
+@using System.Linq.Expressions
+@using WebCRM.Core.Opportunities
+@inject IOpportunityService Opportunities
+
+@* The Primary contact of an opportunity: only the contacts of the chosen account (docs/page-spec.md, P16). When the
+   account changes the list is loaded again and a contact of the old account is cleared. *@
+
+<MudSelect T="int?" Label="@Label" Value="Value" ValueChanged="ValueChanged" For="ValueExpression"
+           Clearable="true" Disabled="@(Disabled || AccountId is null)" Variant="Variant.Outlined" Margin="Margin.Dense"
+           HelperText="@(AccountId is null ? "Choose the account first" : null)"
+           AnchorOrigin="Origin.BottomCenter" ToStringFunc="OptionText">
+    @foreach (var contact in _options)
+    {
+        <MudSelectItem T="int?" Value="@((int?)contact.Id)">@contact.Name</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    private IReadOnlyList<ContactOption> _options = [];
+    private int? _loadedFor;
+    private bool _loaded;
+
+    /// <summary>The account whose contacts are offered.</summary>
+    [Parameter] public int? AccountId { get; set; }
+
+    [Parameter] public int? Value { get; set; }
+
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+
+    [Parameter] public Expression<Func<int?>>? ValueExpression { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Primary contact";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private string? OptionText(int? id) => _options.FirstOrDefault(c => c.Id == id)?.Name;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded && _loadedFor == AccountId)
+        {
+            return;
+        }
+
+        _loaded = true;
+        _loadedFor = AccountId;
+        _options = AccountId is { } accountId ? await Opportunities.GetContactOptionsAsync(accountId, Value) : [];
+
+        // A contact of another account (the account was changed) cannot stay.
+        if (Value is { } current && _options.All(c => c.Id != current))
+        {
+            await ValueChanged.InvokeAsync(null);
+        }
+    }
+}

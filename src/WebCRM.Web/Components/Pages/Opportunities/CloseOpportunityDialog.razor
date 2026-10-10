@@ -1,0 +1,60 @@
+@using WebCRM.Core
+@using WebCRM.Core.Lookups
+@using WebCRM.Web.Components.Shared
+@inject TimeProvider Clock
+
+@* The small dialog of a drop on Won or Lost (docs/page-spec.md, P15): the actual close date, and for Lost the reason.
+   The date sets both ClosedAt and CloseDate (the service does that). *@
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudDatePicker Label="Closed on" Date="_date" DateChanged="d => _date = d" MaxDate="@Today.ToDateTime(TimeOnly.MinValue)"
+                           Required="true" Error="@(_date is null)" ErrorText="Choose the date it closed."
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+            @if (IsLost)
+            {
+                <LookupSelect Kind="LookupKind.LostReason" Label="Lost reason" Required="true"
+                              Value="_reasonId" ValueChanged="v => _reasonId = v" />
+                @if (_submitted && _reasonId is null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" role="alert">A lost reason is required.</MudText>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit">@(IsLost ? "Mark as lost" : "Mark as won")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private DateTime? _date;
+    private int? _reasonId;
+    private bool _submitted;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string StageName { get; set; } = string.Empty;
+
+    [Parameter] public bool IsLost { get; set; }
+
+    /// <summary>Today in Europe/Athens.</summary>
+    private DateOnly Today => DateOnly.FromDateTime(TimeDisplay.ToLocal(Clock.GetUtcNow().UtcDateTime));
+
+    protected override void OnInitialized() => _date = Today.ToDateTime(TimeOnly.MinValue);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        _submitted = true;
+        if (_date is null || (IsLost && _reasonId is null))
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new CloseOpportunityResult(IsLost ? _reasonId : null, DateOnly.FromDateTime(_date.Value))));
+    }
+}

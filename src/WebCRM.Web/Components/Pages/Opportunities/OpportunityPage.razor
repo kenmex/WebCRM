@@ -1,0 +1,451 @@
+@page "/opportunities/new"
+@page "/opportunities/{Id:int}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using WebCRM.Core
+@using WebCRM.Core.Lookups
+@using WebCRM.Core.Opportunities
+@using WebCRM.Core.Records
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Search
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IOpportunityService Opportunities
+@inject IUserContextProvider UserContexts
+@inject IRecentViewService RecentViews
+@inject ILogger<OpportunityPage> Logger
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="220px" />
+}
+else
+{
+    <MudBreadcrumbs Items="_crumbs" Class="px-0" />
+
+    <RecordHeader Title="@PageTitleText" EditContext="_editor.Context" IsEditing="_editor.IsEditing" Saving="_editor.IsSaving"
+                  OnEdit="BeginEdit" OnSave="SaveAsync" OnCancel="CancelAsync">
+        <StatusChip>
+            @if (_detail is not null)
+            {
+                <StageChip Name="@_detail.StageName" IsWon="_detail.IsWon" IsLost="_detail.IsLost" />
+            }
+        </StatusChip>
+
+        <Subtitle>
+            @if (_detail is not null)
+            {
+                <MudLink Href="@($"accounts/{_detail.AccountId}")" Typo="Typo.body2">@_detail.AccountName</MudLink>
+            }
+        </Subtitle>
+
+        <Alerts>
+            @* The stage stepper follows the same rules as dragging on the board (P15). It is off while the form is
+               open, so a stage change cannot race with unsaved edits. *@
+            @if (_detail is not null)
+            {
+                <StageStepper Stages="_stages" CurrentStageId="_detail.StageId" Disabled="@(_editor.IsEditing || _moving)"
+                              OnStage="MoveAsync" />
+            }
+            <ConcurrencyAlert Conflict="_editor.Conflict" CanOverwrite="_user?.IsAdmin == true"
+                              OnReload="ReloadAsync" OnOverwrite="OverwriteAsync" />
+            @if (_moveConflict)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" data-move-conflict="true">
+                    Someone changed this opportunity while you were looking at it.
+                    <MudButton Variant="Variant.Text" OnClick="ReloadAsync" Class="ml-2">Reload</MudButton>
+                </MudAlert>
+            }
+        </Alerts>
+
+        <Actions>
+            @if (_detail is not null)
+            {
+                <StarButton Type="SearchEntity.Opportunity" RecordId="_detail.Id" />
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
+                    Delete
+                </MudButton>
+            }
+        </Actions>
+
+        <ReadContent>
+            @if (_detail is not null)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Account">
+                            <MudLink Href="@($"accounts/{_detail.AccountId}")">@_detail.AccountName</MudLink>
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Primary contact">
+                            @if (_detail.PrimaryContactId is { } contactId)
+                            {
+                                <MudLink Href="@($"contacts/{contactId}")">@_detail.PrimaryContactName</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Stage" Value="@_detail.StageName" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Amount" Value="@($"{Money.Format(_detail.Amount)} {_detail.Currency}")" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Probability"
+                                   Value="@($"{_detail.Probability:0.##}%{(_detail.ProbabilityOverridden ? " (set by hand)" : string.Empty)}")" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Weighted" Value="@Money.Format(OpportunityRules.Weighted(_detail.Amount, _detail.Probability))" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Close date" Value="@_detail.CloseDate.ToString("d MMM yyyy")" />
+                    </MudItem>
+                    @if (_detail.ClosedAt is { } closedAt)
+                    {
+                        <MudItem xs="12" sm="6" md="4"><ReadField Label="Closed" Value="@TimeDisplay.Format(closedAt)" /></MudItem>
+                    }
+                    @if (_detail.IsLost)
+                    {
+                        <MudItem xs="12" sm="6" md="4"><ReadField Label="Lost reason" Value="@_detail.LostReasonName" /></MudItem>
+                    }
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Owner">
+                            <OwnerBadge Name="@_detail.OwnerName" IsActive="_detail.OwnerIsActive" />
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Created" Value="@TimeDisplay.Format(_detail.CreatedAt)" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </ReadContent>
+
+        <EditContent>
+            @if (_editor.Model is { } model)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="model.Name" For="@(() => model.Name)" Label="Name" Required="true"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200" AutoFocus="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <AccountPicker Required="true" Value="model.AccountId" ValueChanged="OnAccountChanged"
+                                       ValueExpression="@(() => model.AccountId)" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <ContactPicker AccountId="model.AccountId" @bind-Value="model.PrimaryContactId" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        @if (IsNew)
+                        {
+                            <MudSelect T="int?" Label="Stage" Required="true" Value="model.StageId" ValueChanged="OnNewStageChanged"
+                                       For="@(() => model.StageId)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                       AnchorOrigin="Origin.BottomCenter" ToStringFunc="@(id => _stages.FirstOrDefault(s => s.Id == id)?.Name)">
+                                @foreach (var stage in _stages.Where(s => s.IsOpen))
+                                {
+                                    <MudSelectItem T="int?" Value="@((int?)stage.Id)">@stage.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else
+                        {
+                            @* Existing record: the stage changes only through the stepper above. *@
+                            <MudTextField T="string" Label="Stage" Value="@_detail?.StageName" ReadOnly="true"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          HelperText="Change the stage with the stepper." />
+                        }
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudNumericField T="decimal" @bind-Value="model.Amount" For="@(() => model.Amount)" Label="Amount (EUR)" Min="0"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudNumericField T="decimal" Value="model.Probability" ValueChanged="OnProbabilityChanged"
+                                         For="@(() => model.Probability)" Label="Probability (%)" Min="0" Max="100"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudDatePicker Label="Close date" Required="true" Date="@model.CloseDate?.ToDateTime(TimeOnly.MinValue)"
+                                       DateChanged="OnCloseDateChanged"
+                                       Error="@(FieldError(nameof(model.CloseDate)) is not null)" ErrorText="@FieldError(nameof(model.CloseDate))"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    @if (_detail is { IsLost: true })
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <LookupSelect Kind="LookupKind.LostReason" Label="Lost reason" Required="true" @bind-Value="model.LostReasonId" />
+                        </MudItem>
+                    }
+                    <MudItem xs="12" sm="6" md="4">
+                        <OwnerPicker Required="true" @bind-Value="model.OwnerId" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </EditContent>
+    </RecordHeader>
+}
+
+@code {
+    private const int NotLoaded = -1;
+
+    private readonly RecordEditor<OpportunityEditModel> _editor = new();
+    private StageMover _mover = default!;
+    private int _loadedFor = NotLoaded;
+    private UserContext? _user;
+    private OpportunityDetail? _detail;
+    private IReadOnlyList<StageOption> _stages = [];
+    private bool _loading = true;
+    private bool _moving;
+    private bool _moveConflict;
+    private bool _probabilityEdited;
+    private List<BreadcrumbItem> _crumbs = [];
+
+    /// <summary>Null on /opportunities/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    /// <summary>/opportunities/new?accountId=7 starts with that account filled in (the + New on the account page).</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "accountId")] public int? AccountId { get; set; }
+
+    private bool IsNew => Id is null;
+
+    private string PageTitleText => IsNew ? "New opportunity" : _detail?.Name ?? "Opportunity";
+
+    protected override void OnInitialized() => _mover = new StageMover(Opportunities, Dialogs, Snackbar);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Id ?? 0;
+        if (key == _loadedFor)
+        {
+            return;
+        }
+
+        _loading = true;
+        _user ??= await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        _detail = null;
+        _moveConflict = false;
+        _editor.End();
+        _stages = await Opportunities.GetStagesAsync();
+
+        if (IsNew)
+        {
+            _probabilityEdited = false;
+            _editor.Begin(await Opportunities.NewAsync(_user, AccountId));
+        }
+        else
+        {
+            _detail = await Opportunities.GetAsync(Id!.Value, _user);
+            if (_detail is null)
+            {
+                // Missing, deleted and not visible all look the same, so ids can't be probed.
+                Navigation.NotFound();
+                return;
+            }
+
+            await RememberVisitAsync();
+        }
+
+        _crumbs =
+        [
+            new BreadcrumbItem("Opportunities", "opportunities"),
+            new BreadcrumbItem(PageTitleText, href: null, disabled: true),
+        ];
+        _loadedFor = key;
+        _loading = false;
+    }
+
+    // Feeds the "Recently viewed" lists. A failure here must never stop the page from showing.
+    private async Task RememberVisitAsync()
+    {
+        try
+        {
+            await RecentViews.RecordAsync(_user!, SearchEntity.Opportunity, Id!.Value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not record the view of opportunity {Id}", Id);
+        }
+    }
+
+    // ---- Edit mode ----
+
+    private void BeginEdit()
+    {
+        _probabilityEdited = false;
+        _editor.Begin(_detail!.ToEditModel());
+    }
+
+    private Task CancelAsync()
+    {
+        if (IsNew)
+        {
+            Navigation.NavigateTo(AccountId is { } accountId ? $"accounts/{accountId}" : "opportunities");
+            return Task.CompletedTask;
+        }
+
+        _editor.End();
+        return Task.CompletedTask;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _moveConflict = false;
+        _detail = await Opportunities.GetAsync(Id!.Value, _user!);
+        if (_detail is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        _editor.End();
+    }
+
+    private string? FieldError(string field) =>
+        _editor.Context is { } context ? context.GetValidationMessages(context.Field(field)).FirstOrDefault() : null;
+
+    private void NotifyChanged(string field) => _editor.Context?.NotifyFieldChanged(_editor.Context.Field(field));
+
+    // A contact belongs to one account, so changing the account clears it (the picker also drops a stale one).
+    private void OnAccountChanged(int? accountId)
+    {
+        var model = _editor.Model!;
+        if (model.AccountId != accountId)
+        {
+            model.PrimaryContactId = null;
+        }
+
+        model.AccountId = accountId;
+        NotifyChanged(nameof(OpportunityEditModel.AccountId));
+    }
+
+    // On a new opportunity the probability follows the stage until the user types one.
+    private void OnNewStageChanged(int? stageId)
+    {
+        var model = _editor.Model!;
+        model.StageId = stageId;
+        if (!_probabilityEdited && _stages.FirstOrDefault(s => s.Id == stageId) is { } stage)
+        {
+            model.Probability = stage.DefaultProbability;
+        }
+
+        NotifyChanged(nameof(OpportunityEditModel.StageId));
+    }
+
+    private void OnProbabilityChanged(decimal probability)
+    {
+        _probabilityEdited = true;
+        _editor.Model!.Probability = probability;
+        NotifyChanged(nameof(OpportunityEditModel.Probability));
+    }
+
+    private void OnCloseDateChanged(DateTime? date)
+    {
+        _editor.Model!.CloseDate = date is null ? null : DateOnly.FromDateTime(date.Value);
+        NotifyChanged(nameof(OpportunityEditModel.CloseDate));
+    }
+
+    // ---- Save ----
+
+    private Task SaveAsync() => SaveAsync(new SaveOptions());
+
+    private Task OverwriteAsync() => SaveAsync(new SaveOptions { AcceptWarnings = true, Overwrite = true });
+
+    private Task SaveAsync(SaveOptions options) => _editor.SaveAsync(
+        save: o => Opportunities.SaveAsync(_editor.Model!, _user!, o),
+        options: options,
+        onSaved: AfterSavedAsync,
+        onNotFound: () =>
+        {
+            Snackbar.Add("This opportunity no longer exists.", Severity.Warning);
+            Navigation.NavigateTo("opportunities");
+            return Task.CompletedTask;
+        },
+        onError: _ => Snackbar.Add("Could not save the opportunity. Please try again.", Severity.Error));
+
+    private async Task AfterSavedAsync(SaveResult result)
+    {
+        Snackbar.Add("Opportunity saved.", Severity.Success);
+
+        // Mark clean first so the unsaved-changes guard does not fire on our own navigation.
+        _editor.MarkClean();
+
+        if (IsNew)
+        {
+            Navigation.NavigateTo($"opportunities/{result.Id}", new NavigationOptions { ReplaceHistoryEntry = true });
+            return;
+        }
+
+        _detail = await Opportunities.GetAsync(result.Id, _user!);
+        _editor.End();
+    }
+
+    // ---- Stage stepper ----
+
+    private async Task MoveAsync(StageOption target)
+    {
+        if (_detail is null || _moving)
+        {
+            return;
+        }
+
+        _moving = true;
+        _moveConflict = false;
+        try
+        {
+            var outcome = await _mover.MoveAsync(_detail.Id, _detail.RowVersion, !_detail.IsOpen, target, _user!);
+            if (outcome.Cancelled)
+            {
+                return;
+            }
+
+            // Whatever happened, show the record as it is now: moved, or changed by someone else.
+            _moveConflict = outcome.Result?.Status == MoveStageStatus.Conflict;
+            if (outcome.Moved || outcome.Result?.Status is MoveStageStatus.Conflict)
+            {
+                _detail = await Opportunities.GetAsync(_detail.Id, _user!);
+                if (_detail is null)
+                {
+                    Navigation.NotFound();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Moving opportunity {Id} to stage {Stage} failed.", Id, target.Id);
+            Snackbar.Add("Could not change the stage. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _moving = false;
+        }
+    }
+
+    // ---- Delete ----
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.ConfirmAsync("Delete opportunity?", $"Delete {_detail!.Name}?", "Delete"))
+        {
+            return;
+        }
+
+        if (!await Opportunities.DeleteAsync(Id!.Value, _user!))
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        Snackbar.Add("Opportunity deleted.", Severity.Success);
+        Navigation.NavigateTo("opportunities");
+    }
+}

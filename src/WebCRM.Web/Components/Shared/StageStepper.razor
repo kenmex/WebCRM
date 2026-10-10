@@ -1,0 +1,42 @@
+@using WebCRM.Core.Opportunities
+
+@* The clickable stage stepper across the header of an opportunity (docs/page-spec.md, P16). The open stages come
+   first in order, then Won and Lost. Clicking a stage runs the same rules as dragging on the board: the parent
+   handles OnStage (Won/Lost dialog, reopen confirmation). On a phone the strip scrolls sideways. *@
+
+<div role="group" aria-label="Stage" data-stage-stepper="true"
+     style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+    @foreach (var stage in Stages)
+    {
+        var current = stage.Id == CurrentStageId;
+        var passed = !current && stage.IsOpen && currentOrder is { } order && stage.SortOrder < order && currentIsOpen;
+        <MudButton Size="Size.Small" Disabled="@(Disabled || current)"
+                   Variant="@(current ? Variant.Filled : Variant.Outlined)"
+                   Color="@ColorOf(stage, current, passed)"
+                   aria-current="@(current ? "step" : null)"
+                   data-stage-step="@stage.Name" data-current="@(current ? "true" : null)"
+                   Style="white-space: nowrap; flex: 0 0 auto;"
+                   OnClick="() => OnStage.InvokeAsync(stage)">@stage.Name</MudButton>
+    }
+</div>
+
+@code {
+    private int? currentOrder => Stages.FirstOrDefault(s => s.Id == CurrentStageId)?.SortOrder;
+    private bool currentIsOpen => Stages.FirstOrDefault(s => s.Id == CurrentStageId)?.IsOpen == true;
+
+    [Parameter, EditorRequired] public IReadOnlyList<StageOption> Stages { get; set; } = [];
+
+    [Parameter, EditorRequired] public int CurrentStageId { get; set; }
+
+    /// <summary>Raised when the user picks another stage.</summary>
+    [Parameter] public EventCallback<StageOption> OnStage { get; set; }
+
+    /// <summary>True while a move is running, or while the form is being edited.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    private static Color ColorOf(StageOption stage, bool current, bool passed) =>
+        stage.IsWon ? Color.Success
+        : stage.IsLost ? (current ? Color.Default : Color.Error)
+        : current || passed ? Color.Primary
+        : Color.Default;
+}
