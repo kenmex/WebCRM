@@ -367,7 +367,7 @@ The app should feel premium through consistency, speed and behaviour, not effect
   - Built (8 Oct 2026 plan, Phase 3): `Ctrl+K` / `Cmd+K` opens the command palette (records, pages, actions; empty it lists actions, favourites and recently viewed; Enter opens the top result). `/` jumps to the search box. `E` edits the record on a detail page, `N` opens New on a list page. `Ctrl+S` / `Cmd+S` saves the form being edited (and suppresses the browser's "Save page as"). `Esc` cancels an edit, closes the search list and closes dialogs.
   - Single-letter shortcuts (`/`, `E`, `N`) are ignored while the focus is in an input, textarea or select, or while a dialog or menu is open. `Ctrl`/`Cmd` combinations work everywhere.
   - They match the physical key, so they also work on a Greek keyboard layout. Other layouts (Cyrillic and so on) are not covered yet.
-  - Implemented with MudBlazor's `MudKeyInterceptor` on one wrapper element (`#crm-shell` in `MainLayout`); components register what they can do right now with the scoped `ShortcutRegistry`. The key interceptor does not report where a key was pressed, so the focus check is one `document.querySelector` call through the existing Blazor JS interop (`BrowserFocus`); there is no script file of our own.
+  - Implemented with MudBlazor's `MudKeyInterceptor` on the page body (`<body id="crm-body">` in `App.razor`, so keys are seen with nothing focused too); components register what they can do right now with the scoped `ShortcutRegistry`. The key interceptor does not report where a key was pressed, so the focus check is one `document.querySelector` call through the existing Blazor JS interop (`BrowserFocus`); there is no script file of our own.
 
 ### Shared components added
 

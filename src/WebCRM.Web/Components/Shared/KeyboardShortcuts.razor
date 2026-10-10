@@ -7,7 +7,7 @@
 @inject ILogger<KeyboardShortcuts> Logger
 
 @* Listens for the app's keyboard shortcuts (docs/page-spec.md, "Keyboard first") through MudBlazor's key interceptor,
-   attached to the element that wraps the whole app, and hands each key to the ShortcutRegistry. Owns Ctrl+K itself.
+   attached to the page body, and hands each key to the ShortcutRegistry. Owns Ctrl+K itself.
    Renders nothing.
 
    Blazor lifecycle note: the interceptor needs the element to exist in the browser, so it is attached in
@@ -20,8 +20,14 @@
     private bool _subscribed;
     private bool _paletteOpen;
 
-    /// <summary>The id of the element that contains the whole app; key presses anywhere inside it are seen.</summary>
-    [Parameter] public string ElementId { get; set; } = "crm-shell";
+    /// <summary>
+    /// The id of the page body (set in App.razor). Keys pressed with nothing focused are aimed at the body, and keys in
+    /// any field bubble up to it, so listening here sees every key press of the page.
+    /// </summary>
+    public const string ShellElementId = "crm-body";
+
+    /// <summary>The element the listener is attached to; the body unless a test says otherwise.</summary>
+    [Parameter] public string ElementId { get; set; } = ShellElementId;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

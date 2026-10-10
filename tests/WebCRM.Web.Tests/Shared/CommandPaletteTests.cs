@@ -220,6 +220,19 @@ public class CommandPaletteTests : MudTestContext
         });
     }
 
+
+    [Fact]
+    public void The_key_listener_is_attached_to_the_page_body_so_keys_with_nothing_focused_are_seen()
+    {
+        Render<KeyboardShortcuts>();
+
+        // MudBlazor's interceptor connects to an element by id. Keys pressed with nothing focused are aimed at <body>,
+        // so the id must be the body's (App.razor sets it from the same constant); an element inside the layout would miss them.
+        JSInterop.Invocations
+            .Where(i => i.Identifier.Contains("mudKeyInterceptor.connect", StringComparison.Ordinal))
+            .ShouldContain(i => i.Arguments.Contains(KeyboardShortcuts.ShellElementId));
+        KeyboardShortcuts.ShellElementId.ShouldBe("crm-body");
+    }
     [Fact]
     public async Task The_shortcut_listener_removes_its_handler_when_it_goes_away()
     {

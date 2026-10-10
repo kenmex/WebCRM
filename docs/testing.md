@@ -34,3 +34,18 @@ Today that is two tests:
 
 Add the trait to any new test whose pass or fail depends on a duration. Numbers from real measurements belong in
 `docs/perf-baseline-demo-data.md`, not in assertions.
+
+## Manual checks (browser)
+
+Some behaviour only exists in a real browser, so bUnit cannot prove it. After changing the layout, `App.razor` or the
+keyboard shortcuts, check these by hand:
+
+- **Shortcuts with nothing focused.** Load any page (for example `/accounts`) and do not click anything, or click an empty
+  area of the page. Then press `Ctrl+K` (the palette must open, not the browser's address-bar search), `/` (the search box
+  gets the focus), `N` on a list page (the New form opens) and `E` on a record page (the form switches to edit mode).
+  The listener is attached to `<body id="crm-body">`; keys with nothing focused are aimed at the body, so a listener on an
+  element inside the layout would miss them.
+- **Shortcuts while typing.** Type `e`, `n` and `/` in a text box: they must appear as text and trigger nothing.
+  `Ctrl+K` and `Ctrl+S` still work there. `Ctrl+S` must not open the browser's "Save page as" dialog.
+- **Ctrl+S saves the last edit.** In an edit form, change a field and press `Ctrl+S` without leaving the field: the saved
+  value must be the new one.
