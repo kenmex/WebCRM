@@ -1,0 +1,96 @@
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Records
+@using WebCRM.Core.Users
+@inject ISavedViewService SavedViews
+@inject IUserContextProvider UserContexts
+
+@* "Save current view": asks for a name and stores the list's filters under it. Also used for "Save a copy" of a
+   published view. A name the user already has is refused with an offer to replace that view. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_error</MudAlert>
+            }
+            <MudTextField T="string" @bind-Value="_name" Label="View name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          MaxLength="PersonalRules.MaxViewNameLength" AutoFocus="true" Immediate="true"
+                          OnKeyDown="OnKeyDownAsync" Disabled="_saving" />
+            @if (_canReplace)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_saving" OnClick="() => SaveAsync(replace: true)">
+                    Replace the existing view
+                </MudButton>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_saving">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving" OnClick="() => SaveAsync(replace: false)">
+            @(_saving ? "Saving..." : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = string.Empty;
+    private string? _error;
+    private bool _canReplace;
+    private bool _saving;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string ListKey { get; set; } = string.Empty;
+
+    /// <summary>The filters to store, as in the address bar (the page number is dropped).</summary>
+    [Parameter, EditorRequired] public string QueryString { get; set; } = string.Empty;
+
+    [Parameter] public string InitialName { get; set; } = string.Empty;
+
+    protected override void OnInitialized() => _name = InitialName;
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e) => e.Key == "Enter" ? SaveAsync(replace: false) : Task.CompletedTask;
+
+    private async Task SaveAsync(bool replace)
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _canReplace = false;
+        try
+        {
+            var user = await UserContexts.GetAsync();
+            if (user is null)
+            {
+                _error = "You are signed out. Sign in again.";
+                return;
+            }
+
+            var result = await SavedViews.SaveAsync(user, ListKey, _name, QueryString, replace);
+            if (result.Status == SaveStatus.Saved)
+            {
+                MudDialog.Close(DialogResult.Ok(result.Id));
+                return;
+            }
+
+            _error = result.FieldErrors is { Count: > 0 } ? string.Join(" ", result.FieldErrors.Values) : "The view could not be saved.";
+            _canReplace = !replace && result.FieldErrors?.GetValueOrDefault("Name") == PersonalRules.DuplicateViewNameMessage;
+        }
+        catch (Exception)
+        {
+            _error = "Could not save the view. Please try again.";
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

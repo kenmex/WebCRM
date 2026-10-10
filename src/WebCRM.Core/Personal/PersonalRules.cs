@@ -14,6 +14,9 @@ public static class PersonalRules
 
     public const int MaxViewNameLength = 100;
 
+    /// <summary>The refusal for a name the user already has on that list; the save dialog offers to replace on seeing it.</summary>
+    public const string DuplicateViewNameMessage = "You already have a view with that name.";
+
     public const int MaxQueryStringLength = 2000;
 
     public static readonly string[] ListKeys = ["accounts", "contacts", "leads", "opportunities", "activities"];

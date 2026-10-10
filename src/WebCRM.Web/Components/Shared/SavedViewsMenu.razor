@@ -1,0 +1,124 @@
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Users
+@inject ISavedViewService SavedViews
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject ILogger<SavedViewsMenu> Logger
+
+@* "Views" on a list page: apply one of your saved filter sets (or one published to everyone), save the current
+   filters under a name, or manage the saved ones. A view is only a query string for this same list. *@
+
+<MudMenu Label="Views" StartIcon="@Icons.Material.Filled.Bookmarks" Variant="Variant.Outlined" Size="Size.Medium"
+         aria-label="Saved views" data-saved-views="@ListKey">
+    @if (_failed)
+    {
+        <MudMenuItem Disabled="true">Views are unavailable right now</MudMenuItem>
+    }
+    else
+    {
+        @if (_views.Mine.Count == 0 && _views.Shared.Count == 0)
+        {
+            <MudMenuItem Disabled="true">No saved views yet</MudMenuItem>
+        }
+
+        @if (_views.Mine.Count > 0)
+        {
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-4">My views</MudText>
+            @foreach (var view in _views.Mine)
+            {
+                <MudMenuItem OnClick="() => Apply(view)" Icon="@IconFor(view)">@view.Name</MudMenuItem>
+            }
+        }
+
+        @if (_views.Shared.Count > 0)
+        {
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-4">Shared with everyone</MudText>
+            @foreach (var view in _views.Shared)
+            {
+                <MudMenuItem OnClick="() => Apply(view)" Icon="@IconFor(view)">@view.Name</MudMenuItem>
+            }
+        }
+
+        <MudDivider />
+        <MudMenuItem OnClick="SaveCurrentAsync" Icon="@Icons.Material.Filled.BookmarkAdd">Save current view...</MudMenuItem>
+        <MudMenuItem OnClick="ManageAsync" Icon="@Icons.Material.Filled.Settings">Manage views...</MudMenuItem>
+    }
+</MudMenu>
+
+@code {
+    private SavedViewList _views = SavedViewList.Empty;
+    private bool _failed;
+
+    /// <summary>"accounts", "contacts", ...: which list the views belong to.</summary>
+    [Parameter, EditorRequired] public string ListKey { get; set; } = string.Empty;
+
+    /// <summary>The list's current filters as a query string (any page is dropped when it is stored or compared).</summary>
+    [Parameter] public string CurrentQuery { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            if (await UserContexts.GetAsync() is { } user)
+            {
+                _views = await SavedViews.ListAsync(user, ListKey);
+                _failed = false;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The menu is a convenience; the list itself must keep working.
+            Logger.LogWarning(ex, "Could not load the saved views of {ListKey}.", ListKey);
+            _failed = true;
+        }
+    }
+
+    private string? IconFor(SavedViewItem view) =>
+        PersonalRules.NormalizeQueryString(CurrentQuery) == view.QueryString ? Icons.Material.Filled.Check : null;
+
+    private void Apply(SavedViewItem view)
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var cut = path.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+        {
+            path = path[..cut];
+        }
+
+        Navigation.NavigateTo(view.QueryString.Length == 0 ? path : $"{path}?{view.QueryString}");
+    }
+
+    private async Task SaveCurrentAsync()
+    {
+        var query = PersonalRules.NormalizeQueryString(CurrentQuery);
+        if (query is null)
+        {
+            Snackbar.Add("These filters cannot be saved.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters<SaveViewDialog> { { x => x.ListKey, ListKey }, { x => x.QueryString, query } };
+        var dialog = await Dialogs.ShowAsync<SaveViewDialog>(
+            "Save current view", parameters, new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, CloseOnEscapeKey = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("View saved.", Severity.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ManageAsync()
+    {
+        var parameters = new DialogParameters<ManageViewsDialog> { { x => x.ListKey, ListKey } };
+        var dialog = await Dialogs.ShowAsync<ManageViewsDialog>(
+            "Manage views", parameters, new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, CloseOnEscapeKey = true });
+        await dialog.Result;
+        await ReloadAsync();
+    }
+}

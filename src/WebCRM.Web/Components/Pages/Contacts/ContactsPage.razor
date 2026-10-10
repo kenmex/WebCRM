@@ -15,7 +15,7 @@
 
 @if (_user is not null)
 {
-    <CrmListPage TDto="ContactListItem" Title="Contacts" EntityName="contact" NewHref="contacts/new"
+    <CrmListPage TDto="ContactListItem" Title="Contacts" EntityName="contact" NewHref="contacts/new" ListKey="contacts"
                  Scopes="_scopes" DefaultScope="_defaultScope" FilterKeys="_filterKeys"
                  Load="LoadAsync" RowHref="@(c => $"contacts/{c.Id}")">
         <Filters Context="list">

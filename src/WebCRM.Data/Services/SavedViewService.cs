@@ -72,7 +72,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
 
         if (sameName is not null && !replaceExisting)
         {
-            return Invalid("Name", "You already have a view with that name.");
+            return Invalid("Name", PersonalRules.DuplicateViewNameMessage);
         }
 
         if (sameName is null && mine.Count >= PersonalRules.MaxSavedViewsPerList)
@@ -94,7 +94,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
         catch (DbUpdateException)
         {
             // Saved twice at once under the same name: the unique index refused the second one.
-            return Invalid("Name", "You already have a view with that name.");
+            return Invalid("Name", PersonalRules.DuplicateViewNameMessage);
         }
 
         return new SaveResult(SaveStatus.Saved, view.Id);
@@ -119,7 +119,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
             .Select(v => v.Name).ToListAsync(cancellationToken);
         if (others.Any(n => string.Equals(n, cleanName, StringComparison.CurrentCultureIgnoreCase)))
         {
-            return Invalid("Name", "You already have a view with that name.");
+            return Invalid("Name", PersonalRules.DuplicateViewNameMessage);
         }
 
         view.Name = cleanName;
@@ -133,7 +133,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
         }
         catch (DbUpdateException)
         {
-            return Invalid("Name", "You already have a view with that name.");
+            return Invalid("Name", PersonalRules.DuplicateViewNameMessage);
         }
 
         return new SaveResult(SaveStatus.Saved, id);

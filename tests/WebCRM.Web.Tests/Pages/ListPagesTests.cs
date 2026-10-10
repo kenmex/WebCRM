@@ -6,6 +6,7 @@ using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
 using WebCRM.Core.Entities;
 using WebCRM.Core.Lookups;
+using WebCRM.Core.Personal;
 using WebCRM.Core.Querying;
 using WebCRM.Core.Users;
 using WebCRM.Web.Components.Pages.Accounts;
@@ -23,6 +24,7 @@ public class ListPagesTests : MudTestContext
 {
     private readonly FakeContactService _contacts = new();
     private readonly FakeAccountService _accounts = new();
+    private readonly FakeSavedViewService _savedViews = new();
     private readonly NavigationManager _navigation;
 
     public ListPagesTests()
@@ -35,12 +37,33 @@ public class ListPagesTests : MudTestContext
         Services.AddSingleton<IOwnerService>(new FakeOwnerService(
             new OwnerOption("sales-1", "Sam Sales", true), new OwnerOption("owner-2", "Olga Owner", true)));
         Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider());
+        Services.AddSingleton<ISavedViewService>(_savedViews);
         StartProviders();
         _navigation = Services.GetRequiredService<NavigationManager>();
     }
 
     private static ContactListItem Row(int id, string name, string? phone = null, string? mobile = null, string? email = null) =>
         new(id, name, 5, "Acme Hellas", "Buyer", email, phone, mobile, "owner-2", "Olga Owner", true, null);
+
+    // ---- Saved views ----
+
+    [Theory]
+    [InlineData("/accounts?scope=all&q=acme&page=3&sort=name", "accounts", "q=acme&scope=all&sort=name")]
+    [InlineData("/contacts?scope=all&q=ann&dnc=1&page=2", "contacts", "dnc=1&q=ann&scope=all")]
+    public void The_Views_menu_saves_the_filters_in_the_address_bar_for_its_own_list(string uri, string listKey, string expectedQuery)
+    {
+        _navigation.NavigateTo(uri);
+        var cut = listKey == "accounts" ? (IRenderedComponent<IComponent>)Render<AccountsPage>() : Render<ContactsPage>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-saved-views]").GetAttribute("data-saved-views").ShouldBe(listKey));
+        cut.Find("[data-saved-views] button").Click();
+        PopoverProvider.WaitForAssertion(() => PopoverProvider.FindAll(".mud-menu-item").ShouldNotBeEmpty());
+        PopoverProvider.FindAll(".mud-menu-item").First(i => i.TextContent.Trim() == "Save current view...").Click();
+        DialogProvider.WaitForElement("input").Input("My view");
+        DialogProvider.FindAll("button").First(b => b.TextContent.Trim() == "Save").Click();
+
+        _savedViews.SaveCalls.ShouldBe([(listKey, "My view", expectedQuery, false)]);
+    }
 
     // ---- Contacts ----
 
@@ -181,6 +204,7 @@ public class ListPagesTests : MudTestContext
             Services.AddSingleton<IAccountService>(new FakeAccountService());
             Services.AddSingleton<IOwnerService>(new FakeOwnerService(new OwnerOption("u", "User", true)));
             Services.AddSingleton<IUserContextProvider>(new FakeUserContextProvider(user));
+            Services.AddSingleton<ISavedViewService>(new FakeSavedViewService());
             StartProviders();
         }
 

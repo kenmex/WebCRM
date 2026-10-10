@@ -1,0 +1,249 @@
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Records
+@using WebCRM.Core.Users
+@inject ISavedViewService SavedViews
+@inject IUserContextProvider UserContexts
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject ILogger<ManageViewsDialog> Logger
+
+@* Rename, publish (Admin) and delete saved views, and copy a published one. A published view is read-only for
+   everyone but its owner; any Admin may delete it. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_failed)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">Could not load your views. Close this and try again.</MudAlert>
+        }
+        else if (_views is null)
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" aria-busy="true" />
+        }
+        else
+        {
+            <MudStack Spacing="1">
+                @if (_error is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_error</MudAlert>
+                }
+
+                <MudText Typo="Typo.overline" Color="Color.Secondary">My views</MudText>
+                @if (_views.Mine.Count == 0)
+                {
+                    <MudText Color="Color.Secondary" Typo="Typo.body2">You have no saved views yet.</MudText>
+                }
+
+                @foreach (var view in _views.Mine)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" data-view="@view.Id">
+                        @if (_renamingId == view.Id)
+                        {
+                            <MudTextField T="string" @bind-Value="_renameText" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          Label="Name" MaxLength="PersonalRules.MaxViewNameLength" AutoFocus="true" Immediate="true"
+                                          OnKeyDown="OnRenameKeyDownAsync" Style="flex: 1 1 auto;" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" aria-label="Save name" Disabled="_busy"
+                                           OnClick="() => RenameAsync(view)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Cancel rename" OnClick="CancelRename" />
+                        }
+                        else
+                        {
+                            <MudText Style="flex: 1 1 auto; overflow-wrap: anywhere;">@view.Name</MudText>
+                            @if (view.IsPublic)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Published</MudChip>
+                            }
+                            @if (_isAdmin)
+                            {
+                                <MudTooltip Text="@(view.IsPublic ? "Stop sharing with everyone" : "Share with everyone")">
+                                    <MudIconButton Icon="@(view.IsPublic ? Icons.Material.Filled.Public : Icons.Material.Outlined.Public)"
+                                                   aria-label="@(view.IsPublic ? "Unpublish" : "Publish")" Disabled="_busy"
+                                                   OnClick="() => SetPublicAsync(view, !view.IsPublic)" />
+                                </MudTooltip>
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" aria-label="@($"Rename {view.Name}")" Disabled="_busy"
+                                           OnClick="() => BeginRename(view)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" aria-label="@($"Delete {view.Name}")"
+                                           Disabled="_busy" OnClick="() => DeleteAsync(view)" />
+                        }
+                    </MudStack>
+                }
+
+                @if (_views.Shared.Count > 0)
+                {
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Shared with everyone</MudText>
+                    @foreach (var view in _views.Shared)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" data-view="@view.Id">
+                            <div style="flex: 1 1 auto;">
+                                <MudText Style="overflow-wrap: anywhere;">@view.Name</MudText>
+                                @if (view.OwnerName is not null)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">by @view.OwnerName</MudText>
+                                }
+                            </div>
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Disabled="_busy"
+                                       aria-label="@($"Save a copy of {view.Name}")" OnClick="() => CopyAsync(view)">
+                                Save a copy
+                            </MudButton>
+                            @if (_isAdmin)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                               aria-label="@($"Delete {view.Name}")" Disabled="_busy" OnClick="() => DeleteAsync(view)" />
+                            }
+                        </MudStack>
+                    }
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private UserContext? _user;
+    private SavedViewList? _views;
+    private bool _failed;
+    private bool _busy;
+    private bool _isAdmin;
+    private string? _error;
+    private int? _renamingId;
+    private string _renameText = string.Empty;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string ListKey { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _user = await UserContexts.GetAsync();
+            _isAdmin = _user?.IsAdmin == true;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load the saved views of {ListKey}.", ListKey);
+            _failed = true;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_user is not null)
+        {
+            _views = await SavedViews.ListAsync(_user, ListKey);
+        }
+    }
+
+    private void BeginRename(SavedViewItem view)
+    {
+        _error = null;
+        _renamingId = view.Id;
+        _renameText = view.Name;
+    }
+
+    private void CancelRename() => _renamingId = null;
+
+    private Task OnRenameKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CancelRename();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task RenameAsync(SavedViewItem view) => await RunAsync(async () =>
+    {
+        var result = await SavedViews.RenameAsync(_user!, view.Id, _renameText);
+        if (result.Status == SaveStatus.Saved || result.Status == SaveStatus.NotFound)
+        {
+            _renamingId = null;
+        }
+        else
+        {
+            _error = result.FieldErrors is { Count: > 0 } ? string.Join(" ", result.FieldErrors.Values) : "The view could not be renamed.";
+        }
+    });
+
+    private async Task SetPublicAsync(SavedViewItem view, bool isPublic) => await RunAsync(async () =>
+    {
+        if (!await SavedViews.SetPublicAsync(_user!, view.Id, isPublic))
+        {
+            _error = "Only an Admin can share a view with everyone.";
+        }
+    });
+
+    private async Task DeleteAsync(SavedViewItem view)
+    {
+        var message = view.IsMine
+            ? $"Delete the view \"{view.Name}\"?"
+            : $"Delete the shared view \"{view.Name}\"? It disappears for everyone.";
+        if (!await Dialogs.ConfirmAsync("Delete view", message, "Delete"))
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            if (!await SavedViews.DeleteAsync(_user!, view.Id))
+            {
+                _error = "That view is already gone, or you cannot delete it.";
+            }
+        });
+    }
+
+    private async Task CopyAsync(SavedViewItem view)
+    {
+        var parameters = new DialogParameters<SaveViewDialog>
+        {
+            { x => x.ListKey, ListKey },
+            { x => x.QueryString, view.QueryString },
+            { x => x.InitialName, $"{view.Name} (copy)" },
+        };
+        var dialog = await Dialogs.ShowAsync<SaveViewDialog>(
+            "Save a copy", parameters, new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small, CloseOnEscapeKey = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("Copy saved to your views.", Severity.Success);
+            await RunAsync(() => Task.CompletedTask);
+        }
+    }
+
+    // One place for the busy flag, the reload and the failure message.
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy || _user is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Saved view action failed for {ListKey}.", ListKey);
+            _error = "That did not work. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

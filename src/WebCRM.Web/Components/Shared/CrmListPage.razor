@@ -3,6 +3,8 @@
 @inherits PhoneAwareComponentBase
 @using Microsoft.Extensions.Logging
 @using MudBlazor.Services
+@using Microsoft.AspNetCore.WebUtilities
+@using WebCRM.Core.Personal
 @using WebCRM.Core.Querying
 @inject NavigationManager Navigation
 @inject ILogger<CrmListPage<TDto>> Logger
@@ -44,6 +46,10 @@
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                       Clearable="true" Style="max-width: 320px; min-width: 200px;" />
         @Filters?.Invoke(this)
+        @if (ListKey is not null)
+        {
+            <SavedViewsMenu ListKey="@ListKey" CurrentQuery="@CurrentQuery" />
+        }
         @if (State.HasFilters)
         {
             <MudButton Variant="Variant.Text" OnClick="ClearFiltersAsync">Clear filters</MudButton>
@@ -152,6 +158,9 @@
 
     [Parameter] public string? NewHref { get; set; }
 
+    /// <summary>"accounts", "contacts", ...: gives the list the Views menu. Null for a list without saved views.</summary>
+    [Parameter] public string? ListKey { get; set; }
+
     [Parameter] public IReadOnlyList<ListScope> Scopes { get; set; } = [ListScope.Mine, ListScope.All];
 
     [Parameter] public ListScope DefaultScope { get; set; } = ListScope.Mine;
@@ -177,6 +186,13 @@
     [Parameter, EditorRequired] public Func<TDto, string> RowHref { get; set; } = default!;
 
     public ListState State { get; private set; } = new();
+
+    /// <summary>The current filters as the address bar writes them, without the page: what a saved view stores.</summary>
+    private string CurrentQuery => QueryHelpers.AddQueryString(
+        string.Empty,
+        State.ToQueryParameters(DefaultScope, FilterKeys)
+            .Where(p => p.Value is not null && p.Key != ListState.PageKey)
+            .Select(p => KeyValuePair.Create(p.Key, Convert.ToString(p.Value, System.Globalization.CultureInfo.InvariantCulture)))!);
 
     private int PageCount => Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
 
