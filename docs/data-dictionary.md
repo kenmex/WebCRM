@@ -215,10 +215,10 @@ Index: (UserId, ReadAt, CreatedAt). A nightly job deletes read notifications old
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
 | UserId | nvarchar(450) | no |  | Owner |
-| ListKey | nvarchar(50) | no |  | accounts, contacts, leads, opportunities, activities |
+| ListKey | nvarchar(50) | no |  | accounts, contacts, leads, opportunities, activities (the list the view belongs to) |
 | Name | nvarchar(100) | no |  | Unique (UserId, ListKey, Name) |
-| QueryString | nvarchar(2000) | no |  | Filters, sort, columns, scope |
-| IsPublic | bit | no | 0 | Only Admin can set it |
+| QueryString | nvarchar(2000) | no |  | The list's URL state without the page: scope, quick filter, typed filters, sort, as `key=value` pairs joined by `&` (no leading `?`, no `page`). Applying a view navigates to the list with this query; keys the list does not know are ignored |
+| IsPublic | bit | no | 0 | Only Admin can set it. A published view is shown to every user, read-only: only its owner changes it, any Admin may delete it, and other users can save a copy. At most 30 views per user per list (service rule) |
 
 **Favourite** and **RecentView**
 
@@ -226,8 +226,8 @@ Index: (UserId, ReadAt, CreatedAt). A nightly job deletes read notifications old
 | --- | --- | --- | --- | --- |
 | UserId | nvarchar(450) | no |  |  |
 | EntityName | nvarchar(50) | no |  |  |
-| EntityId | int | no |  | Unique (UserId, EntityName, EntityId) |
-| CreatedAt / ViewedAt | datetime2(0) | no | sysutcdatetime() | RecentView keeps the last 50 per user, upserted on view |
+| EntityId | int | no |  | Unique (UserId, EntityName, EntityId). EntityName is `Account` or `Contact` for now (`Opportunity` and `Lead` follow with those pages). Rows for records that were deleted or are no longer visible are skipped when listed and removed then |
+| CreatedAt / ViewedAt | datetime2(0) | no | sysutcdatetime() | RecentView keeps the last 50 per user, upserted on view; a view of the same record within a minute of the last one does not write again. Favourites have no cap; both are listed newest first, 10 at a time in the search dropdown and the command palette |
 
 **ApiToken**
 
