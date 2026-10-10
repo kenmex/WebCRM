@@ -508,6 +508,8 @@ public sealed class DemoDataGenerator(DemoOptions options, DemoReferenceData ref
 
     private void MakeLeads()
     {
+        var accountsWithContacts = _accounts.Where(a => a.Contacts.Count > 0).ToList();
+
         for (var i = 0; i < options.Leads; i++)
         {
             var greek = _rng.NextDouble() < 0.7;
@@ -543,17 +545,15 @@ public sealed class DemoDataGenerator(DemoOptions options, DemoReferenceData ref
             };
 
             var roll = _rng.NextDouble();
-            if (roll < 0.15 && _accounts.Count > 0)
+            if (roll < 0.15 && accountsWithContacts.Count > 0)
             {
-                // Converted: it points at the records the conversion made.
-                var info = _accounts[_rng.Next(_accounts.Count)];
+                // Converted: it points at the records the conversion made. Convert always makes or links a
+                // contact (CK_Leads_ConvertedConsistent), so only accounts that have contacts qualify.
+                var info = accountsWithContacts[_rng.Next(accountsWithContacts.Count)];
                 lead.LeadStatusId = reference.LeadStatusConvertedId;
                 lead.ConvertedAt = Trunc(Min(created.AddDays(_rng.Next(1, 60)), _now));
                 lead.ConvertedAccountId = info.Account.Id;
-                if (info.Contacts.Count > 0)
-                {
-                    lead.ConvertedContactId = _set.Contacts[info.Contacts[_rng.Next(info.Contacts.Count)]].Id;
-                }
+                lead.ConvertedContactId = _set.Contacts[info.Contacts[_rng.Next(info.Contacts.Count)]].Id;
 
                 if (info.Opportunities.Count > 0 && _rng.NextDouble() < 0.5)
                 {

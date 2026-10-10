@@ -293,10 +293,9 @@ public class DemoDataGeneratorTests
             {
                 lead.ConvertedAt.ShouldNotBeNull();
                 accounts.ShouldContainKey(lead.ConvertedAccountId!.Value);
-                if (lead.ConvertedContactId is { } contactId)
-                {
-                    contacts[contactId].AccountId.ShouldBe(lead.ConvertedAccountId.Value);
-                }
+                // CK_Leads_ConvertedConsistent: a converted lead always has its contact.
+                lead.ConvertedContactId.ShouldNotBeNull();
+                contacts[lead.ConvertedContactId.Value].AccountId.ShouldBe(lead.ConvertedAccountId.Value);
 
                 if (lead.ConvertedOpportunityId is { } opportunityId)
                 {
