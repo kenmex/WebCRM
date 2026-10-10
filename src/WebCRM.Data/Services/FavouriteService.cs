@@ -31,7 +31,7 @@ public sealed class FavouriteService(IDbContextFactory<CrmDbContext> factory, Ti
         {
             // Un-starring always works, even for a record that has since been deleted.
             db.Favourites.RemoveRange(existing);
-            await db.SaveChangesAsync(cancellationToken);
+            await PersonalSave.SaveTolerantAsync(db, cancellationToken);
             return true;
         }
 
@@ -98,7 +98,7 @@ public sealed class FavouriteService(IDbContextFactory<CrmDbContext> factory, Ti
         if (gone.Count > 0)
         {
             db.Favourites.RemoveRange(gone);
-            await db.SaveChangesAsync(cancellationToken);
+            await PersonalSave.SaveTolerantAsync(db, cancellationToken);
         }
 
         return [.. hits.Take(Math.Clamp(take, 1, 100))];

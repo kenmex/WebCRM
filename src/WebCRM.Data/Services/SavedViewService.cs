@@ -127,6 +127,10 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
         {
             await db.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            return new SaveResult(SaveStatus.NotFound); // deleted while renaming
+        }
         catch (DbUpdateException)
         {
             return Invalid("Name", "You already have a view with that name.");
@@ -147,7 +151,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
         }
 
         db.SavedViews.Remove(view);
-        await db.SaveChangesAsync(cancellationToken);
+        await PersonalSave.SaveTolerantAsync(db, cancellationToken);
         return true;
     }
 
@@ -166,7 +170,7 @@ public sealed class SavedViewService(IDbContextFactory<CrmDbContext> factory) : 
         }
 
         view.IsPublic = isPublic;
-        await db.SaveChangesAsync(cancellationToken);
+        await PersonalSave.SaveTolerantAsync(db, cancellationToken);
         return true;
     }
 

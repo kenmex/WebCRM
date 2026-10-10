@@ -23,7 +23,7 @@ public sealed class RecentViewService(IDbContextFactory<CrmDbContext> factory, T
             if (now - existing.ViewedAt >= PersonalRules.RecentViewRefresh)
             {
                 existing.ViewedAt = now;
-                await db.SaveChangesAsync(cancellationToken);
+                await PersonalSave.SaveTolerantAsync(db, cancellationToken);
             }
 
             return;
@@ -63,7 +63,7 @@ public sealed class RecentViewService(IDbContextFactory<CrmDbContext> factory, T
         if (surplus.Count > 0)
         {
             db.RecentViews.RemoveRange(surplus);
-            await db.SaveChangesAsync(cancellationToken);
+            await PersonalSave.SaveTolerantAsync(db, cancellationToken);
         }
     }
 
@@ -97,7 +97,7 @@ public sealed class RecentViewService(IDbContextFactory<CrmDbContext> factory, T
         if (gone.Count > 0)
         {
             db.RecentViews.RemoveRange(gone);
-            await db.SaveChangesAsync(cancellationToken);
+            await PersonalSave.SaveTolerantAsync(db, cancellationToken);
         }
 
         return [.. hits.Take(Math.Clamp(take, 1, 100))];
