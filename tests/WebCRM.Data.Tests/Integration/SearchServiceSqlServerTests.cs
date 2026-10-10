@@ -98,8 +98,48 @@ public class SearchServiceSqlServerTests : IClassFixture<SqlServerFixture>
         return contact.Id;
     }
 
+    private async Task<int> AddLeadAsync(string name, string? company = null, string? email = null, string statusCode = LeadStatus.New)
+    {
+        await using var db = _factory.CreateDbContext();
+        var lead = new Lead
+        {
+            Name = name,
+            Company = company,
+            Email = email,
+            OwnerId = Alice,
+            LeadStatusId = await db.LeadStatuses.Where(s => s.SystemCode == statusCode).Select(s => s.Id).SingleAsync(Ct),
+        };
+        db.Leads.Add(lead);
+        await db.SaveChangesAsync(Ct);
+        return lead.Id;
+    }
+
     private static IEnumerable<string> Titles(SearchResults results, SearchEntity type) =>
         results.Groups.Single(g => g.Type == type).Hits.Select(h => h.Title);
+
+    // ---- Leads ----
+
+    [Fact]
+    public async Task Leads_are_found_by_name_company_and_email_ignoring_accents_and_case_and_show_their_status()
+    {
+        await EnsureReferenceDataAsync();
+        await AddLeadAsync($"{_token} Μαρία Παπαδοπούλου", company: $"{_token} Ελληνική Α.Ε.", email: $"{_token}.maria@acme.gr");
+        await AddLeadAsync($"{_token} Done Deal", statusCode: LeadStatus.Converted);
+
+        foreach (var text in new[] { $"{_token} ΜΑΡΙΑ", $"{_token} ελληνικη", $"{_token.ToUpperInvariant()}.MARIA@ACME.GR" })
+        {
+            var results = await _service.SearchAsync(text, 5, _alice, Ct);
+
+            Titles(results, SearchEntity.Lead).ShouldContain($"{_token} Μαρία Παπαδοπούλου", $"lead search '{text}'");
+        }
+
+        // Converted leads stay findable; the subtitle says what they are.
+        var all = await _service.SearchAsync(_token, 5, _alice, Ct);
+        var group = all.Groups.Single(g => g.Type == SearchEntity.Lead);
+        group.TotalCount.ShouldBe(2);
+        group.Hits.Single(h => h.Title.EndsWith("Done Deal", StringComparison.Ordinal)).Subtitle.ShouldBe("Converted");
+        group.Hits.Single(h => h.Title.EndsWith("Παπαδοπούλου", StringComparison.Ordinal)).Subtitle.ShouldBe($"{_token} Ελληνική Α.Ε. · New");
+    }
 
     // ---- Accent and case insensitivity (D3) ----
 
@@ -180,17 +220,18 @@ public class SearchServiceSqlServerTests : IClassFixture<SqlServerFixture>
     }
 
     [Fact]
-    public async Task Both_groups_are_always_returned_accounts_first_and_the_subtitle_of_an_account_is_industry_and_city()
+    public async Task Every_group_is_always_returned_accounts_first_and_the_subtitle_of_an_account_is_industry_and_city()
     {
         await EnsureReferenceDataAsync();
         await AddAccountAsync($"{_token} Acme", city: "Athens");
 
         var results = await _service.SearchAsync(_token, 5, _alice, Ct);
 
-        results.Groups.Select(g => g.Type).ShouldBe([SearchEntity.Account, SearchEntity.Contact]);
+        results.Groups.Select(g => g.Type).ShouldBe([SearchEntity.Account, SearchEntity.Contact, SearchEntity.Lead]);
         results.Groups[0].Hits.Single().Subtitle.ShouldBe("Athens");
         results.Groups[1].Hits.ShouldBeEmpty();
         results.Groups[1].TotalCount.ShouldBe(0);
+        results.Groups[2].Hits.ShouldBeEmpty();
         results.TotalCount.ShouldBe(1);
     }
 

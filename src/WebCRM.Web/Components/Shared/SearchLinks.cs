@@ -11,6 +11,7 @@ public static class SearchLinks
     {
         SearchEntity.Account => $"accounts/{hit.Id}",
         SearchEntity.Contact => $"contacts/{hit.Id}",
+        SearchEntity.Lead => $"leads/{hit.Id}",
         _ => throw new ArgumentOutOfRangeException(nameof(hit)),
     };
 
@@ -19,6 +20,8 @@ public static class SearchLinks
     {
         SearchEntity.Account => $"accounts?scope=all&q={Uri.EscapeDataString(query)}",
         SearchEntity.Contact => $"contacts?scope=all&q={Uri.EscapeDataString(query)}",
+        // Converted and Disqualified leads stay findable: the list otherwise hides them.
+        SearchEntity.Lead => $"leads?scope=all&status=all&q={Uri.EscapeDataString(query)}",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
@@ -28,6 +31,8 @@ public static class SearchLinks
         (SearchEntity.Account, false) => "Account",
         (SearchEntity.Contact, true) => "Contacts",
         (SearchEntity.Contact, false) => "Contact",
+        (SearchEntity.Lead, true) => "Leads",
+        (SearchEntity.Lead, false) => "Lead",
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
@@ -35,6 +40,7 @@ public static class SearchLinks
     {
         SearchEntity.Account => MudBlazor.Icons.Material.Filled.Business,
         SearchEntity.Contact => MudBlazor.Icons.Material.Filled.Person,
+        SearchEntity.Lead => MudBlazor.Icons.Material.Filled.TrackChanges,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 }

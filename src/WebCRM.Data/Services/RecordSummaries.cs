@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
+using WebCRM.Core.Leads;
 using WebCRM.Core.Entities;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
@@ -52,6 +53,20 @@ internal static class RecordSummaries
             foreach (var c in contacts)
             {
                 result[(SearchEntity.Contact, c.Id)] = new SearchHit(SearchEntity.Contact, c.Id, c.FullName, Join(c.AccountName, c.JobTitle));
+            }
+        }
+
+        var leadIds = refs.Where(r => r.Type == SearchEntity.Lead).Select(r => r.Id).ToList();
+        if (leadIds.Count > 0)
+        {
+            var leads = await db.Leads.AsNoTracking()
+                .VisibleTo(user)
+                .Where(l => leadIds.Contains(l.Id))
+                .Select(l => new { l.Id, l.Name, l.Company, Status = l.LeadStatus.Name })
+                .ToListAsync(cancellationToken);
+            foreach (var l in leads)
+            {
+                result[(SearchEntity.Lead, l.Id)] = new SearchHit(SearchEntity.Lead, l.Id, l.Name, Join(l.Company, l.Status));
             }
         }
 

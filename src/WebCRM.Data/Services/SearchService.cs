@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WebCRM.Core.Accounts;
 using WebCRM.Core.Contacts;
+using WebCRM.Core.Leads;
 using WebCRM.Core.Search;
 using WebCRM.Core.Users;
 
@@ -26,9 +27,10 @@ public sealed class SearchService(IDbContextFactory<CrmDbContext> factory) : ISe
         // Each type runs on its own context at the same time (a context runs one query at a time).
         var accounts = SearchAccountsAsync(term, take, user, cancellationToken);
         var contacts = SearchContactsAsync(term, take, user, cancellationToken);
-        await Task.WhenAll(accounts, contacts);
+        var leads = SearchLeadsAsync(term, take, user, cancellationToken);
+        await Task.WhenAll(accounts, contacts, leads);
 
-        return new SearchResults(term, [accounts.Result, contacts.Result]);
+        return new SearchResults(term, [accounts.Result, contacts.Result, leads.Result]);
     }
 
     private async Task<SearchGroup> SearchAccountsAsync(
@@ -96,6 +98,36 @@ public sealed class SearchService(IDbContextFactory<CrmDbContext> factory) : ISe
             .Select(r => new SearchHit(SearchEntity.Contact, r.Id, r.FullName, Join(r.AccountName, r.JobTitle)))
             .ToList();
         return new SearchGroup(SearchEntity.Contact, hits, countTask.Result);
+    }
+
+    private async Task<SearchGroup> SearchLeadsAsync(
+        string term, int take, UserContext user, CancellationToken cancellationToken)
+    {
+        await using var countDb = await factory.CreateDbContextAsync(cancellationToken);
+        await using var pageDb = await factory.CreateDbContextAsync(cancellationToken);
+
+        // Converted and Disqualified leads are found too (they stay queryable for source reporting); the status in
+        // the subtitle tells them apart.
+        IQueryable<Core.Entities.Lead> Matches(CrmDbContext db) => db.Leads.AsNoTracking()
+            .VisibleTo(user)
+            .Where(l =>
+                l.Name.Contains(term)
+                || (l.Company != null && l.Company.Contains(term))
+                || (l.Email != null && l.Email.Contains(term))
+                || (l.Phone != null && l.Phone.Contains(term)));
+
+        var countTask = Matches(countDb).CountAsync(cancellationToken);
+        var rowsTask = Matches(pageDb)
+            .OrderBy(l => l.Name.StartsWith(term) ? 0 : 1).ThenBy(l => l.Name).ThenBy(l => l.Id)
+            .Take(take)
+            .Select(l => new { l.Id, l.Name, l.Company, Status = l.LeadStatus.Name })
+            .ToListAsync(cancellationToken);
+        await Task.WhenAll(countTask, rowsTask);
+
+        var hits = rowsTask.Result
+            .Select(r => new SearchHit(SearchEntity.Lead, r.Id, r.Name, Join(r.Company, r.Status)))
+            .ToList();
+        return new SearchGroup(SearchEntity.Lead, hits, countTask.Result);
     }
 
     private static string? Join(params string?[] parts)

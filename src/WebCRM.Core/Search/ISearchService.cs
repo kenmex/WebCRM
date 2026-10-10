@@ -6,6 +6,7 @@ public enum SearchEntity
 {
     Account,
     Contact,
+    Lead,
 }
 
 /// <summary>One match: enough to show a row and to open the record.</summary>
@@ -39,9 +40,9 @@ public static class SearchRules
 public interface ISearchService
 {
     /// <summary>
-    /// Global search over accounts (name, legal name, email, VAT / Tax ID, phone) and contacts (name, email, phone,
-    /// mobile). Accent- and case-insensitive, only records the user may see. Fewer than <see cref="SearchRules.MinLength"/>
-    /// characters gives no groups.
+    /// Global search over accounts (name, legal name, email, VAT / Tax ID, phone), contacts (name, email, phone,
+    /// mobile) and leads (name, company, email, phone). Accent- and case-insensitive, only records the user may see.
+    /// Fewer than <see cref="SearchRules.MinLength"/> characters gives no groups.
     /// </summary>
     Task<SearchResults> SearchAsync(
         string? text, int takePerGroup, UserContext user, CancellationToken cancellationToken = default);

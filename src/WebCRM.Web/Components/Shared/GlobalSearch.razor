@@ -41,7 +41,7 @@ else
 @code {
     private RenderFragment SearchBox => @<div style="position: relative;" role="search" @onfocusin="OnFocusAsync" @onclick="OnClickAsync">
         <MudTextField T="string" @ref="_box" Value="@_text" ValueChanged="OnTextChangedAsync" Immediate="true" DebounceInterval="250"
-                      Placeholder="Search accounts and contacts" aria-label="Search" Variant="Variant.Filled" Margin="Margin.Dense"
+                      Placeholder="Search accounts, contacts and leads" aria-label="Search" Variant="Variant.Filled" Margin="Margin.Dense"
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
                       AutoFocus="@IsPhone" OnKeyDown="OnKeyDownAsync" OnBlur="OnBlurAsync" Underline="false" />
         <MudPopover Open="@_open" Fixed="false" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft"

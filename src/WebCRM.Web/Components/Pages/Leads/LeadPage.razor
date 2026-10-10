@@ -1,0 +1,317 @@
+@page "/leads/new"
+@page "/leads/{Id:int}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WebCRM.Core
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Leads
+@using WebCRM.Core.Lookups
+@using WebCRM.Core.Records
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Search
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject ILeadService Leads
+@inject IUserContextProvider UserContexts
+@inject IRecentViewService RecentViews
+@inject ILogger<LeadPage> Logger
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="220px" />
+}
+else
+{
+    <MudBreadcrumbs Items="_crumbs" Class="px-0" />
+
+    <RecordHeader Title="@PageTitleText" EditContext="_editor.Context" IsEditing="_editor.IsEditing" Saving="_editor.IsSaving"
+                  CanEdit="_detail is not { IsConverted: true }"
+                  OnEdit="BeginEdit" OnSave="SaveAsync" OnCancel="CancelAsync">
+        <StatusChip>
+            @if (_detail is not null)
+            {
+                <LeadStatusChip Name="@_detail.StatusName" Code="@_detail.StatusCode" />
+            }
+        </StatusChip>
+
+        <Subtitle>
+            @if (_detail is not null && !string.IsNullOrWhiteSpace(_detail.Company))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@_detail.Company</MudText>
+            }
+        </Subtitle>
+
+        <Alerts>
+            @if (_detail is { IsConverted: true })
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" data-lead-converted="true">
+                    Converted on @TimeDisplay.Format(_detail.ConvertedAt!.Value). This lead is read-only.
+                    <MudStack Row="true" Spacing="3" Wrap="Wrap.Wrap" Class="mt-1">
+                        @if (_detail.ConvertedAccountName is not null)
+                        {
+                            <MudLink Href="@($"accounts/{_detail.ConvertedAccountId}")">Account: @_detail.ConvertedAccountName</MudLink>
+                        }
+                        @if (_detail.ConvertedContactName is not null)
+                        {
+                            <MudLink Href="@($"contacts/{_detail.ConvertedContactId}")">Contact: @_detail.ConvertedContactName</MudLink>
+                        }
+                        @* Becomes a link when the Opportunities pages exist. *@
+                        @if (_detail.ConvertedOpportunityName is not null)
+                        {
+                            <MudText Typo="Typo.body2" Inline="true" data-converted-opportunity="true">Opportunity: @_detail.ConvertedOpportunityName</MudText>
+                        }
+                    </MudStack>
+                </MudAlert>
+            }
+            <ConcurrencyAlert Conflict="_editor.Conflict" CanOverwrite="_user?.IsAdmin == true"
+                              OnReload="ReloadAsync" OnOverwrite="OverwriteAsync" />
+        </Alerts>
+
+        <Actions>
+            @if (_detail is not null)
+            {
+                <StarButton Type="SearchEntity.Lead" RecordId="_detail.Id" />
+                @if (!_detail.IsConverted)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
+                        Delete
+                    </MudButton>
+                }
+            }
+        </Actions>
+
+        <ReadContent>
+            @if (_detail is not null)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Email">
+                            @if (Links.MailtoUri(_detail.Email) is { } mail)
+                            {
+                                <MudLink Href="@mail">@_detail.Email</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Phone">
+                            @if (Links.TelUri(_detail.Phone) is { } tel)
+                            {
+                                <MudLink Href="@tel">@_detail.Phone</MudLink>
+                            }
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Company" Value="@_detail.Company" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Source" Value="@_detail.SourceName" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><ReadField Label="Status" Value="@_detail.StatusName" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Owner">
+                            <OwnerBadge Name="@_detail.OwnerName" IsActive="_detail.OwnerIsActive" />
+                        </ReadField>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <ReadField Label="Created" Value="@TimeDisplay.Format(_detail.CreatedAt)" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </ReadContent>
+
+        <EditContent>
+            @if (_editor.Model is { } model)
+            {
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="model.Name" For="@(() => model.Name)" Label="Name" Required="true"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200" AutoFocus="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="model.Company" For="@(() => model.Company)" Label="Company"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="200" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="model.Email" For="@(() => model.Email)" Label="Email" InputType="InputType.Email"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="254" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="model.Phone" For="@(() => model.Phone)" Label="Phone" InputType="InputType.Telephone"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="30" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <LookupSelect Kind="LookupKind.LeadSource" Label="Source" @bind-Value="model.LeadSourceId" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        @* Converted is set only by the Convert action, so it cannot be picked here. *@
+                        <LookupSelect Kind="LookupKind.LeadStatus" Label="Status" Required="true" @bind-Value="model.LeadStatusId"
+                                      ExcludeSystemCodes="_notPickable" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <OwnerPicker Required="true" @bind-Value="model.OwnerId" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </EditContent>
+    </RecordHeader>
+}
+
+@code {
+    private const int NotLoaded = -1;
+
+    private static readonly string[] _notPickable = [LeadStatus.Converted];
+
+    private readonly RecordEditor<LeadEditModel> _editor = new();
+    private int _loadedFor = NotLoaded;
+    private UserContext? _user;
+    private LeadDetail? _detail;
+    private bool _loading = true;
+    private List<BreadcrumbItem> _crumbs = [];
+
+    /// <summary>Null on /leads/new.</summary>
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+
+    private string PageTitleText => IsNew ? "New lead" : _detail?.Name ?? "Lead";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Id ?? 0;
+        if (key == _loadedFor)
+        {
+            return;
+        }
+
+        _loading = true;
+        _user ??= await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        _detail = null;
+        _editor.End();
+
+        if (IsNew)
+        {
+            _editor.Begin(await Leads.NewAsync(_user));
+        }
+        else
+        {
+            _detail = await Leads.GetAsync(Id!.Value, _user);
+            if (_detail is null)
+            {
+                // Missing, deleted and not visible all look the same, so ids can't be probed.
+                Navigation.NotFound();
+                return;
+            }
+
+            await RememberVisitAsync();
+        }
+
+        _crumbs =
+        [
+            new BreadcrumbItem("Leads", "leads"),
+            new BreadcrumbItem(PageTitleText, href: null, disabled: true),
+        ];
+        _loadedFor = key;
+        _loading = false;
+    }
+
+    // Feeds the "Recently viewed" lists. A failure here must never stop the page from showing.
+    private async Task RememberVisitAsync()
+    {
+        try
+        {
+            await RecentViews.RecordAsync(_user!, SearchEntity.Lead, Id!.Value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not record the view of lead {Id}", Id);
+        }
+    }
+
+    // ---- Edit mode ----
+
+    private void BeginEdit() => _editor.Begin(_detail!.ToEditModel());
+
+    private Task CancelAsync()
+    {
+        if (IsNew)
+        {
+            Navigation.NavigateTo("leads");
+            return Task.CompletedTask;
+        }
+
+        _editor.End();
+        return Task.CompletedTask;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _detail = await Leads.GetAsync(Id!.Value, _user!);
+        if (_detail is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        _editor.End();
+    }
+
+    // ---- Save ----
+
+    private Task SaveAsync() => SaveAsync(new SaveOptions());
+
+    private Task OverwriteAsync() => SaveAsync(new SaveOptions { AcceptWarnings = true, Overwrite = true });
+
+    private Task SaveAsync(SaveOptions options) => _editor.SaveAsync(
+        save: o => Leads.SaveAsync(_editor.Model!, _user!, o),
+        options: options,
+        onSaved: AfterSavedAsync,
+        onNotFound: () =>
+        {
+            Snackbar.Add("This lead no longer exists.", Severity.Warning);
+            Navigation.NavigateTo("leads");
+            return Task.CompletedTask;
+        },
+        onError: _ => Snackbar.Add("Could not save the lead. Please try again.", Severity.Error));
+
+    private async Task AfterSavedAsync(SaveResult result)
+    {
+        Snackbar.Add("Lead saved.", Severity.Success);
+
+        // Mark clean first so the unsaved-changes guard does not fire on our own navigation.
+        _editor.MarkClean();
+
+        if (IsNew)
+        {
+            Navigation.NavigateTo($"leads/{result.Id}", new NavigationOptions { ReplaceHistoryEntry = true });
+            return;
+        }
+
+        _detail = await Leads.GetAsync(result.Id, _user!);
+        _editor.End();
+    }
+
+    // ---- Delete ----
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.ConfirmAsync("Delete lead?", $"Delete {_detail!.Name}?", "Delete"))
+        {
+            return;
+        }
+
+        if (!await Leads.DeleteAsync(Id!.Value, _user!))
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        Snackbar.Add("Lead deleted.", Severity.Success);
+        Navigation.NavigateTo("leads");
+    }
+}

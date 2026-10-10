@@ -34,7 +34,7 @@ public class MainLayoutTests : MudTestContext
 
         var cut = RenderLayout();
 
-        cut.WaitForAssertion(() => cut.FindAll("input[placeholder='Search accounts and contacts']").Count.ShouldBe(1));
+        cut.WaitForAssertion(() => cut.FindAll("input[placeholder='Search accounts, contacts and leads']").Count.ShouldBe(1));
         cut.FindAll("button").ShouldContain(b => b.TextContent.Trim() == "New");
         cut.Find(".page-body").TextContent.ShouldBe("body");
     }
@@ -47,7 +47,7 @@ public class MainLayoutTests : MudTestContext
         var cut = RenderLayout();
 
         cut.Find(".page-body").TextContent.ShouldBe("body");
-        cut.FindAll("input[placeholder='Search accounts and contacts']").ShouldBeEmpty();
+        cut.FindAll("input[placeholder='Search accounts, contacts and leads']").ShouldBeEmpty();
         cut.FindAll("button").ShouldNotContain(b => b.TextContent.Trim() == "New");
     }
 

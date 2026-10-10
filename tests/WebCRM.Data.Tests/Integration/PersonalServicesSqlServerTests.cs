@@ -116,6 +116,35 @@ public class PersonalServicesSqlServerTests : IClassFixture<SqlServerFixture>
         (await db.Favourites.CountAsync(f => f.UserId == _alice.UserId, Ct)).ShouldBeLessThanOrEqualTo(1);
     }
 
+    [Fact]
+    public async Task A_starred_and_a_recently_viewed_lead_show_up_in_the_lists_with_their_company_and_status()
+    {
+        await EnsureUsersAsync();
+        int leadId;
+        await using (var db = _factory.CreateDbContext())
+        {
+            var lead = new Lead
+            {
+                Name = $"PA {_token} Lead",
+                Company = "Acme",
+                OwnerId = _alice.UserId,
+                LeadStatusId = await db.LeadStatuses.Where(s => s.SystemCode == LeadStatus.New).Select(s => s.Id).SingleAsync(Ct),
+            };
+            db.Leads.Add(lead);
+            await db.SaveChangesAsync(Ct);
+            leadId = lead.Id;
+        }
+
+        (await Favourites.SetAsync(_alice, SearchEntity.Lead, leadId, true, Ct)).ShouldBeTrue();
+        await Recents.RecordAsync(_alice, SearchEntity.Lead, leadId, Ct);
+
+        var starred = await Favourites.ListAsync(_alice, 10, Ct);
+        var recent = await Recents.ListAsync(_alice, 10, Ct);
+
+        starred.ShouldHaveSingleItem().ShouldBe(new SearchHit(SearchEntity.Lead, leadId, $"PA {_token} Lead", "Acme · New"));
+        recent.ShouldHaveSingleItem().Id.ShouldBe(leadId);
+    }
+
     // ---- recent views
 
     [Fact]
