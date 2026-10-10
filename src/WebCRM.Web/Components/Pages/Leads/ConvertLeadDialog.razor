@@ -1,0 +1,417 @@
+@using WebCRM.Core.Contacts
+@using WebCRM.Core.Leads
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject ILeadService Leads
+@inject IContactService Contacts
+@inject IUserContextProvider UserContexts
+
+@* Convert (docs/page-spec.md, P13 and US3): which account, which contact, and whether to start an opportunity. Nothing
+   is created until Convert is pressed, and then the service creates it all in one transaction or none of it. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_prefill is not null)
+        {
+            <MudStack Spacing="4">
+                @if (_error is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" role="alert">@_error</MudAlert>
+                }
+
+                @* ---- Account ---- *@
+                <MudStack Spacing="2" data-convert-section="account">
+                    <MudText Typo="Typo.subtitle1"><strong>Account</strong></MudText>
+                    <MudRadioGroup T="AccountChoice" Value="_accountChoice" ValueChanged="OnAccountChoiceChangedAsync">
+                        <MudRadio T="AccountChoice" Value="AccountChoice.New">Create a new account</MudRadio>
+                        <MudRadio T="AccountChoice" Value="AccountChoice.Existing">Use an existing account</MudRadio>
+                    </MudRadioGroup>
+
+                    @if (_accountChoice == AccountChoice.New)
+                    {
+                        <MudTextField @bind-Value="_accountName" Label="Account name" Required="true" MaxLength="200"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Error="@HasError(nameof(LeadConvertRequest.NewAccountName))"
+                                      ErrorText="@ErrorOf(nameof(LeadConvertRequest.NewAccountName))" />
+                    }
+                    else
+                    {
+                        <AccountPicker Value="_accountId" ValueChanged="OnAccountPickedAsync" Required="true" />
+                        @if (HasError(nameof(LeadConvertRequest.ExistingAccountId)))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error">@ErrorOf(nameof(LeadConvertRequest.ExistingAccountId))</MudText>
+                        }
+                    }
+
+                    @if (_prefill.AccountMatches.Count > 0)
+                    {
+                        <div data-convert-matches="true">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Existing accounts that may be the same company:</MudText>
+                            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="mt-1">
+                                @foreach (var match in _prefill.AccountMatches)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="@(_accountChoice == AccountChoice.Existing && _accountId == match.AccountId ? Variant.Filled : Variant.Outlined)"
+                                             Color="Color.Primary" OnClick="() => PickMatchAsync(match)"
+                                             data-convert-match="@match.AccountId" title="@ReasonText(match)">
+                                        @match.Name
+                                    </MudChip>
+                                }
+                            </MudStack>
+                        </div>
+                    }
+                </MudStack>
+
+                @* ---- Contact ---- *@
+                <MudStack Spacing="2" data-convert-section="contact">
+                    <MudText Typo="Typo.subtitle1"><strong>Contact</strong></MudText>
+
+                    @if (CanPickExistingContact)
+                    {
+                        <MudRadioGroup T="ContactChoice" @bind-Value="_contactChoice">
+                            <MudRadio T="ContactChoice" Value="ContactChoice.New">Create a new contact</MudRadio>
+                            <MudRadio T="ContactChoice" Value="ContactChoice.Existing">Use an existing contact of this account</MudRadio>
+                        </MudRadioGroup>
+                    }
+
+                    @if (_contactChoice == ContactChoice.Existing && CanPickExistingContact)
+                    {
+                        <MudSelect T="int?" Label="Contact" @bind-Value="_contactId" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   ToStringFunc="@ContactText"
+                                   Error="@HasError(nameof(LeadConvertRequest.ExistingContactId))"
+                                   ErrorText="@ErrorOf(nameof(LeadConvertRequest.ExistingContactId))">
+                            @foreach (var contact in _accountContacts)
+                            {
+                                <MudSelectItem T="int?" Value="@((int?)contact.Id)">@ContactText(contact.Id)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        @if (_emailMatchedContact)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" data-convert-email-match="true">
+                                This contact has the same email as the lead.
+                            </MudText>
+                        }
+                    }
+                    else
+                    {
+                        <MudGrid Spacing="2">
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_firstName" Label="First name" MaxLength="100"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_lastName" Label="Last name" Required="true" MaxLength="100"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Error="@HasError(nameof(LeadConvertRequest.ContactLastName))"
+                                              ErrorText="@ErrorOf(nameof(LeadConvertRequest.ContactLastName))" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_jobTitle" Label="Job title" MaxLength="100"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Error="@HasError(nameof(LeadConvertRequest.ContactJobTitle))"
+                                              ErrorText="@ErrorOf(nameof(LeadConvertRequest.ContactJobTitle))" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_phone" Label="Phone" InputType="InputType.Telephone" MaxLength="30"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Error="@HasError(nameof(LeadConvertRequest.ContactPhone))"
+                                              ErrorText="@ErrorOf(nameof(LeadConvertRequest.ContactPhone))" />
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" MaxLength="254"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Error="@HasError(nameof(LeadConvertRequest.ContactEmail))"
+                                              ErrorText="@ErrorOf(nameof(LeadConvertRequest.ContactEmail))" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                </MudStack>
+
+                @* ---- Opportunity ---- *@
+                <MudStack Spacing="1" data-convert-section="opportunity">
+                    <MudCheckBox T="bool" @bind-Value="_createOpportunity" Label="Also create an opportunity" />
+                    @if (_createOpportunity)
+                    {
+                        <MudTextField @bind-Value="_opportunityName" Label="Opportunity name" Required="true" MaxLength="200"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Error="@HasError(nameof(LeadConvertRequest.OpportunityName))"
+                                      ErrorText="@ErrorOf(nameof(LeadConvertRequest.OpportunityName))"
+                                      HelperText="It starts in the first open stage, closing in 30 days." />
+                    }
+                </MudStack>
+            </MudStack>
+        }
+        else if (_failed)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" role="alert">
+                This lead can no longer be converted. It may already be converted or disqualified. Close this and reload the page.
+            </MudAlert>
+        }
+        else
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="240px" aria-busy="true" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_converting">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConvertAsync"
+                   Disabled="@(_converting || _prefill is null)">
+            @(_converting ? "Converting..." : "Convert")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private enum AccountChoice { New, Existing }
+
+    private enum ContactChoice { New, Existing }
+
+    private UserContext? _user;
+    private ConvertPrefill? _prefill;
+    private bool _failed;
+    private bool _converting;
+    private string? _error;
+    private Dictionary<string, string> _errors = [];
+
+    private AccountChoice _accountChoice = AccountChoice.New;
+    private string? _accountName;
+    private int? _accountId;
+
+    private ContactChoice _contactChoice = ContactChoice.New;
+    private IReadOnlyList<ContactListItem> _accountContacts = [];
+    private int? _contactId;
+    private bool _emailMatchedContact;
+    private string? _firstName;
+    private string? _lastName;
+    private string? _jobTitle;
+    private string? _email;
+    private string? _phone;
+
+    private bool _createOpportunity;
+    private string? _opportunityName;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired] public int LeadId { get; set; }
+
+    /// <summary>A new account always gets a new contact; an existing account may offer its own contacts.</summary>
+    private bool CanPickExistingContact => _accountChoice == AccountChoice.Existing && _accountContacts.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _user = await UserContexts.GetAsync();
+            if (_user is null || await Leads.GetConvertPrefillAsync(LeadId, _user) is not { } prefill)
+            {
+                _failed = true;
+                return;
+            }
+
+            _prefill = prefill;
+            _accountName = prefill.AccountName;
+            _firstName = prefill.ContactFirstName;
+            _lastName = prefill.ContactLastName;
+            _email = prefill.ContactEmail;
+            _phone = prefill.ContactPhone;
+            _opportunityName = prefill.OpportunityName;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _failed = true;
+        }
+    }
+
+    // ---- Account ----
+
+    private async Task OnAccountChoiceChangedAsync(AccountChoice choice)
+    {
+        _accountChoice = choice;
+        _errors.Remove(nameof(LeadConvertRequest.NewAccountName));
+        _errors.Remove(nameof(LeadConvertRequest.ExistingAccountId));
+        if (choice == AccountChoice.New)
+        {
+            // A new account has no contacts yet.
+            _contactChoice = ContactChoice.New;
+            _accountContacts = [];
+        }
+        else
+        {
+            await LoadAccountContactsAsync();
+        }
+    }
+
+    private async Task OnAccountPickedAsync(int? accountId)
+    {
+        _accountId = accountId;
+        _errors.Remove(nameof(LeadConvertRequest.ExistingAccountId));
+        await LoadAccountContactsAsync();
+    }
+
+    private async Task PickMatchAsync(AccountMatch match)
+    {
+        _accountChoice = AccountChoice.Existing;
+        await OnAccountPickedAsync(match.AccountId);
+    }
+
+    // The contacts of the chosen account, so the lead can be linked to a person who is already there. A contact with
+    // the lead's own email is the likely answer, so it starts selected (and the user can still choose a new contact).
+    private async Task LoadAccountContactsAsync()
+    {
+        _accountContacts = [];
+        _contactId = null;
+        _emailMatchedContact = false;
+        _contactChoice = ContactChoice.New;
+        if (_accountChoice != AccountChoice.Existing || _accountId is not { } accountId || _user is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await Contacts.SearchAsync(
+                new ContactQuery(Scope: ListScope.All, AccountId: accountId, PageSize: 100), _user);
+            _accountContacts = result.Items;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _error = "Could not load the contacts of this account.";
+            return;
+        }
+
+        var leadEmail = _prefill?.ContactEmail;
+        if (!string.IsNullOrEmpty(leadEmail)
+            && _accountContacts.FirstOrDefault(c => string.Equals(c.Email, leadEmail, StringComparison.OrdinalIgnoreCase)) is { } same)
+        {
+            _contactChoice = ContactChoice.Existing;
+            _contactId = same.Id;
+            _emailMatchedContact = true;
+        }
+    }
+
+    private string? ContactText(int? id) => _accountContacts.FirstOrDefault(c => c.Id == id) is { } contact
+        ? string.Join(" · ", new[] { contact.FullName, contact.JobTitle, contact.Email }.Where(s => !string.IsNullOrEmpty(s)))
+        : null;
+
+    private static string ReasonText(AccountMatch match) => match.Reasons switch
+    {
+        AccountMatchReason.CompanyName | AccountMatchReason.EmailDomain => "Same company name and email domain",
+        AccountMatchReason.EmailDomain => "Same email domain",
+        _ => "Same company name",
+    };
+
+    // ---- Convert ----
+
+    private async Task ConvertAsync()
+    {
+        if (_converting || _user is null)
+        {
+            return;
+        }
+
+        var request = BuildRequest();
+        _errors = Validate(request);
+        _error = null;
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+
+        _converting = true;
+        try
+        {
+            var result = await Leads.ConvertAsync(request, _user);
+            switch (result.Status)
+            {
+                case ConvertStatus.Converted:
+                case ConvertStatus.AlreadyConverted:
+                case ConvertStatus.Disqualified:
+                case ConvertStatus.NotFound:
+                    // The page reloads the lead and says what happened.
+                    MudDialog.Close(DialogResult.Ok(result));
+                    break;
+
+                case ConvertStatus.Invalid:
+                    _errors = result.FieldErrors is null ? [] : new Dictionary<string, string>(result.FieldErrors);
+                    _error = _errors.Count == 0 ? "Please check the details and try again." : string.Join(" ", _errors.Values);
+                    break;
+
+                case ConvertStatus.Conflict:
+                    _error = "The lead was changed while you were converting it. Nothing was created. Please try again.";
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _error = "Could not convert the lead. Nothing was created. Please try again.";
+        }
+        finally
+        {
+            _converting = false;
+        }
+    }
+
+    private LeadConvertRequest BuildRequest()
+    {
+        var existingAccount = _accountChoice == AccountChoice.Existing;
+        var existingContact = existingAccount && CanPickExistingContact && _contactChoice == ContactChoice.Existing;
+        return new LeadConvertRequest
+        {
+            LeadId = LeadId,
+            ExistingAccountId = existingAccount ? _accountId : null,
+            NewAccountName = existingAccount ? null : _accountName,
+            ExistingContactId = existingContact ? _contactId : null,
+            ContactFirstName = _firstName,
+            ContactLastName = _lastName,
+            ContactJobTitle = _jobTitle,
+            ContactEmail = _email,
+            ContactPhone = _phone,
+            CreateOpportunity = _createOpportunity,
+            OpportunityName = _opportunityName,
+        };
+    }
+
+    // The same checks the service makes, so the usual mistakes are caught without a round trip. The service stays the
+    // authority: it checks again and also knows about duplicate names and contacts of other accounts.
+    private Dictionary<string, string> Validate(LeadConvertRequest request)
+    {
+        var errors = new Dictionary<string, string>();
+
+        if (_accountChoice == AccountChoice.Existing)
+        {
+            if (request.ExistingAccountId is null)
+            {
+                errors[nameof(LeadConvertRequest.ExistingAccountId)] = "Choose an account.";
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(request.NewAccountName))
+        {
+            errors[nameof(LeadConvertRequest.NewAccountName)] = "Account name is required.";
+        }
+
+        if (_accountChoice == AccountChoice.Existing && _contactChoice == ContactChoice.Existing && CanPickExistingContact)
+        {
+            if (request.ExistingContactId is null)
+            {
+                errors[nameof(LeadConvertRequest.ExistingContactId)] = "Choose a contact.";
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(request.ContactLastName))
+        {
+            errors[nameof(LeadConvertRequest.ContactLastName)] = "Last name is required.";
+        }
+
+        if (request.CreateOpportunity && string.IsNullOrWhiteSpace(request.OpportunityName))
+        {
+            errors[nameof(LeadConvertRequest.OpportunityName)] = "Opportunity name is required.";
+        }
+
+        return errors;
+    }
+
+    private bool HasError(string field) => _errors.ContainsKey(field);
+
+    private string? ErrorOf(string field) => _errors.GetValueOrDefault(field);
+
+    private void Cancel() => MudDialog.Cancel();
+}

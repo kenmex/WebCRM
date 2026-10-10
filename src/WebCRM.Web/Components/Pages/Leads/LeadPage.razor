@@ -76,6 +76,11 @@ else
             @if (_detail is not null)
             {
                 <StarButton Type="SearchEntity.Lead" RecordId="_detail.Id" />
+                @if (_detail.CanConvert)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                               OnClick="ConvertAsync">Convert</MudButton>
+                }
                 @if (!_detail.IsConverted)
                 {
                     <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
@@ -294,6 +299,45 @@ else
 
         _detail = await Leads.GetAsync(result.Id, _user!);
         _editor.End();
+    }
+
+    // ---- Convert ----
+
+    private async Task ConvertAsync()
+    {
+        var parameters = new DialogParameters<ConvertLeadDialog> { { x => x.LeadId, _detail!.Id } };
+        var options = new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Medium, CloseOnEscapeKey = true };
+
+        var dialog = await Dialogs.ShowAsync<ConvertLeadDialog>("Convert lead", parameters, options);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: ConvertResult converted })
+        {
+            return;
+        }
+
+        // Whatever happened, show the lead as it is now: converted (by us or by someone just before us), or not.
+        _detail = await Leads.GetAsync(_detail.Id, _user!);
+        if (_detail is null)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        switch (converted.Status)
+        {
+            case ConvertStatus.Converted:
+                Snackbar.Add("Lead converted.", Severity.Success);
+                break;
+            case ConvertStatus.AlreadyConverted:
+                Snackbar.Add("This lead was just converted by someone else.", Severity.Info);
+                break;
+            case ConvertStatus.Disqualified:
+                Snackbar.Add("A disqualified lead cannot be converted.", Severity.Warning);
+                break;
+            default:
+                Snackbar.Add("This lead could not be converted.", Severity.Warning);
+                break;
+        }
     }
 
     // ---- Delete ----
