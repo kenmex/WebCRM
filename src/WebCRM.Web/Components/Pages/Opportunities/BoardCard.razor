@@ -1,0 +1,66 @@
+@using WebCRM.Core.Opportunities
+@using WebCRM.Web.Components.Shared
+
+@* One card of the pipeline board (docs/page-spec.md, P15): name, account, amount, close date and the owner's
+   initials, with a red edge when the close date has passed. On a phone there is no drag and drop, so the card carries
+   a Stage dropdown instead. *@
+
+<MudPaper Outlined="true" Class="pa-2" data-board-card="@Card.Id" data-overdue="@(Overdue ? "true" : null)"
+          Style="@(Overdue ? "border-left: 4px solid var(--mud-palette-error);" : null)">
+    <MudStack Spacing="1">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Spacing="1">
+            <MudLink Href="@($"opportunities/{Card.Id}")" Typo="Typo.subtitle2" draggable="false">@Card.Name</MudLink>
+            <MudTooltip Text="@(Card.OwnerName ?? "No owner")">
+                <MudAvatar Size="Size.Small" Color="Color.Default" data-card-owner="true">@Initials(Card.OwnerName)</MudAvatar>
+            </MudTooltip>
+        </MudStack>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@Card.AccountName</MudText>
+        <MudStack Row="true" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.body2">@Money.Format(Card.Amount)</MudText>
+            <MudText Typo="Typo.body2" Color="@(Overdue ? Color.Error : Color.Default)">@Card.CloseDate.ToString("d MMM yyyy")</MudText>
+        </MudStack>
+        @if (ShowStageSelect)
+        {
+            <MudSelect T="int" Label="Stage" Value="Card.StageId" ValueChanged="OnSelected" Disabled="Busy"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
+                       ToStringFunc="@(id => Stages.FirstOrDefault(s => s.Id == id)?.Name)"
+                       data-card-stage-select="@Card.Id">
+                @foreach (var stage in Stages)
+                {
+                    <MudSelectItem T="int" Value="@stage.Id">@stage.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public OpportunityListItem Card { get; set; } = default!;
+
+    [Parameter] public DateOnly Today { get; set; }
+
+    [Parameter] public IReadOnlyList<StageOption> Stages { get; set; } = [];
+
+    /// <summary>Phones: a Stage dropdown on the card instead of drag and drop.</summary>
+    [Parameter] public bool ShowStageSelect { get; set; }
+
+    /// <summary>A move of this card is running.</summary>
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<StageOption> OnStage { get; set; }
+
+    private bool Overdue => Card.IsOverdue(Today);
+
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0
+            ? "?"
+            : string.Concat(parts.Take(2).Select(p => char.ToUpperInvariant(p[0])));
+    }
+
+    private Task OnSelected(int stageId) =>
+        Stages.FirstOrDefault(s => s.Id == stageId) is { } stage && stage.Id != Card.StageId
+            ? OnStage.InvokeAsync(stage)
+            : Task.CompletedTask;
+}

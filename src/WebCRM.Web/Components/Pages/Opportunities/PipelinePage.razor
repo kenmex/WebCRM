@@ -1,0 +1,486 @@
+@page "/opportunities/board"
+@attribute [Authorize]
+@inherits PhoneAwareComponentBase
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using WebCRM.Core
+@using WebCRM.Core.Entities
+@using WebCRM.Core.Opportunities
+@using WebCRM.Core.Querying
+@using WebCRM.Core.Users
+@using WebCRM.Web.Components.Shared
+@inject IOpportunityService Opportunities
+@inject IUserContextProvider UserContexts
+@inject IOwnerService Owners
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject ILogger<PipelinePage> Logger
+@inject TimeProvider Clock
+
+<PageTitle>Pipeline</PageTitle>
+
+@* The pipeline board (docs/page-spec.md, P15). Filters live in the URL, like the lists, so the List/Board toggle
+   keeps them. A card you drop moves at once; if the save fails, the stage was changed by someone else or you cancel
+   the Won/Lost dialog, it snaps back. Other users' changes do not show until you reload (live updates are a later
+   slice). *@
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h4" HtmlTag="h1">Pipeline</MudText>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudButtonGroup Variant="Variant.Outlined" Size="Size.Medium">
+                <MudButton Href="@OpportunityFilters.SwitchTo("opportunities", Navigation.Uri)"
+                           StartIcon="@Icons.Material.Filled.ViewList" data-switch-to="list">List</MudButton>
+                <MudButton Disabled="true" StartIcon="@Icons.Material.Filled.ViewKanban" aria-current="page">Board</MudButton>
+            </MudButtonGroup>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="opportunities/new">
+                New
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_user is not null)
+    {
+        @if (_scopes.Count > 1)
+        {
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" role="group" aria-label="Scope">
+                @foreach (var scope in _scopes)
+                {
+                    var selected = scope == _state.Scope;
+                    <MudChip T="string" Variant="@(selected ? Variant.Filled : Variant.Outlined)"
+                             Color="@(selected ? Color.Primary : Color.Default)"
+                             OnClick="() => SetScopeAsync(scope)">
+                        @ScopeLabel(scope)
+                    </MudChip>
+                }
+            </MudStack>
+        }
+
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+            <MudTextField T="string" Value="@_state.Search" ValueChanged="OnSearchChanged" Immediate="true" DebounceInterval="250"
+                          Placeholder="Search opportunities" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Clearable="true" Style="max-width: 320px; min-width: 200px;" />
+            <MudSelect T="string" Label="Owner" Value="@(_state.GetFilter(OpportunityFilters.OwnerKey))"
+                       ToStringFunc="@(id => _owners.FirstOrDefault(o => o.Id == id)?.DisplayName)"
+                       ValueChanged="@(v => SetFilterAsync(OpportunityFilters.OwnerKey, v))"
+                       Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                @foreach (var owner in _owners)
+                {
+                    <MudSelectItem T="string" Value="@owner.Id">@owner.DisplayName@(owner.IsActive ? "" : " (inactive)")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker Label="Close from" Date="@OpportunityFilters.ParseDate(_state.GetFilter(OpportunityFilters.FromKey))?.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(d => SetFilterAsync(OpportunityFilters.FromKey, OpportunityFilters.FormatDate(d)))"
+                           Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 170px;" />
+            <MudDatePicker Label="Close to" Date="@OpportunityFilters.ParseDate(_state.GetFilter(OpportunityFilters.ToKey))?.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(d => SetFilterAsync(OpportunityFilters.ToKey, OpportunityFilters.FormatDate(d)))"
+                           Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 170px;" />
+            @if (_state.HasFilters)
+            {
+                <MudButton Variant="Variant.Text" OnClick="ClearFiltersAsync">Clear filters</MudButton>
+            }
+        </MudStack>
+    }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+            @_error
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="LoadAsync" Class="ml-2">Retry</MudButton>
+        </MudAlert>
+    }
+    else if (!ViewportKnown || !_loadedOnce)
+    {
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="320px" aria-busy="true" />
+    }
+    else if (IsPhone)
+    {
+        <MudTabs @bind-ActivePanelIndex="_activeTab" Rounded="true" PanelClass="pt-3" data-board-tabs="true">
+            @foreach (var column in _columns)
+            {
+                <MudTabPanel Text="@($"{column.Stage.Name} ({column.Count})")" ID="@column.Stage.Id">
+                    <MudSwipeArea OnSwipeEnd="OnSwipe" Style="min-height: 200px;">
+                        <MudStack Spacing="2" data-board-column="@column.Stage.Name">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @column.Count @(column.Count == 1 ? "opportunity" : "opportunities") · @Money.Format(column.Total)
+                            </MudText>
+                            @foreach (var card in CardsOf(column))
+                            {
+                                <BoardCard Card="card" Today="Today" Stages="_stages" ShowStageSelect="true"
+                                           Busy="_busy.Contains(card.Id)" OnStage="s => MoveCardAsync(card, s)" />
+                            }
+                            @if (column.Count > column.Loaded)
+                            {
+                                <MudLink Href="@ShowMoreHref(column)" data-show-more="@column.Stage.Id">
+                                    Show @(column.Count - column.Loaded) more in the list
+                                </MudLink>
+                            }
+                        </MudStack>
+                    </MudSwipeArea>
+                </MudTabPanel>
+            }
+        </MudTabs>
+    }
+    else
+    {
+        <MudDropContainer T="OpportunityListItem" @ref="_container" Items="_cards"
+                          ItemsSelector="@((card, zone) => card.StageId.ToString() == zone)"
+                          ItemDropped="OnItemDropped" ItemDisabled="@(card => _busy.Contains(card.Id))"
+                          CanDropClass="mud-border-primary" Class="d-flex"
+                          Style="gap: 12px; overflow-x: auto; align-items: flex-start;">
+            <ItemRenderer>
+                <BoardCard Card="context" Today="Today" Busy="_busy.Contains(context.Id)" />
+            </ItemRenderer>
+            <ChildContent>
+                @foreach (var column in _columns)
+                {
+                    var collapsed = !column.Stage.IsOpen && !_expanded.Contains(column.Stage.Id);
+                    <MudPaper Outlined="true" Class="pa-2" data-board-column="@column.Stage.Name"
+                              Style="@(collapsed ? "flex: 0 0 180px;" : "flex: 0 0 280px;")">
+                        <MudStack Spacing="1">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.subtitle1"><strong>@column.Stage.Name</strong></MudText>
+                                @if (!column.Stage.IsOpen)
+                                {
+                                    <MudIconButton Icon="@(collapsed ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                                                   Size="Size.Small" aria-label="@(collapsed ? $"Show {column.Stage.Name} cards" : $"Hide {column.Stage.Name} cards")"
+                                                   OnClick="() => ToggleColumn(column.Stage.Id)" />
+                                }
+                            </MudStack>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" data-column-summary="@column.Stage.Name">
+                                @column.Count · @Money.Format(column.Total)
+                            </MudText>
+                            @* A collapsed column still takes drops; it just does not list its cards. *@
+                            <MudDropZone T="OpportunityListItem" Identifier="@column.Stage.Id.ToString()"
+                                         ItemsSelector="@(collapsed ? NoCards : null)"
+                                         Class="@(collapsed ? "pa-3" : "pa-1 d-flex flex-column")"
+                                         Style="min-height: 80px; gap: 8px;" />
+                            @if (column.Count > column.Loaded && !collapsed)
+                            {
+                                <MudLink Href="@ShowMoreHref(column)" data-show-more="@column.Stage.Id">
+                                    Show @(column.Count - column.Loaded) more in the list
+                                </MudLink>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                }
+            </ChildContent>
+        </MudDropContainer>
+    }
+</MudStack>
+
+@code {
+    private sealed class ColumnView(BoardColumn source)
+    {
+        public StageOption Stage { get; } = source.Stage;
+
+        public int Count { get; set; } = source.Count;
+
+        public decimal Total { get; set; } = source.Total;
+
+        /// <summary>Cards the server sent for this column (at most 100).</summary>
+        public int Loaded { get; } = source.Cards.Count;
+    }
+
+    private static readonly Func<OpportunityListItem, bool> NoCards = _ => false;
+
+    private MudDropContainer<OpportunityListItem>? _container;
+    private StageMover _mover = default!;
+    private ListState _state = new();
+    private UserContext? _user;
+    private IReadOnlyList<ListScope> _scopes = [ListScope.Mine, ListScope.All];
+    private ListScope _defaultScope = ListScope.Mine;
+    private IReadOnlyList<OwnerOption> _owners = [];
+    private IReadOnlyList<StageOption> _stages = [];
+    private List<ColumnView> _columns = [];
+    private List<OpportunityListItem> _cards = [];
+    private readonly HashSet<int> _busy = [];
+    private readonly HashSet<int> _expanded = [];
+    private CancellationTokenSource? _cts;
+    private bool _loadedOnce;
+    private string? _error;
+    private int _activeTab;
+
+    /// <summary>Today in Europe/Athens, for the overdue edge.</summary>
+    private DateOnly Today => DateOnly.FromDateTime(TimeDisplay.ToLocal(Clock.GetUtcNow().UtcDateTime));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mover = new StageMover(Opportunities, Dialogs, Snackbar);
+        Navigation.LocationChanged += OnLocationChanged;
+
+        _user = await UserContexts.GetAsync();
+        if (_user is null)
+        {
+            return;
+        }
+
+        // Same scopes and starting scope as the list.
+        _defaultScope = _user.Role switch
+        {
+            RoleNames.Manager => ListScope.Team,
+            RoleNames.Admin => ListScope.All,
+            _ => ListScope.Mine,
+        };
+        _scopes = _user.IsManager
+            ? [ListScope.Mine, ListScope.Team, ListScope.All]
+            : [ListScope.Mine, ListScope.All];
+        _owners = await Owners.GetFilterOptionsAsync();
+
+        _state = ListState.FromUri(Navigation.Uri, _scopes, _defaultScope, OpportunityFilters.BoardKeys);
+        await LoadAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Ignore navigation to another page: this component is about to be disposed.
+        if (_user is null || new Uri(e.Location).AbsolutePath != new Uri(Navigation.Uri).AbsolutePath)
+        {
+            return;
+        }
+
+        _state = ListState.FromUri(e.Location, _scopes, _defaultScope, OpportunityFilters.BoardKeys);
+        _ = InvokeAsync(LoadAsync);
+    }
+
+    // ---- Loading ----
+
+    private async Task LoadAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        _error = null;
+
+        try
+        {
+            var board = await Opportunities.GetBoardAsync(OpportunityFilters.ToBoardQuery(_state), _user!, cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _stages = [.. board.Select(c => c.Stage)];
+            _columns = [.. board.Select(c => new ColumnView(c))];
+            _cards = [.. board.SelectMany(c => c.Cards)];
+            _activeTab = Math.Min(_activeTab, Math.Max(0, _columns.Count - 1));
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Loading the pipeline board failed.");
+            _error = "Could not load the pipeline.";
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loadedOnce = true;
+                await InvokeAsync(StateHasChanged);
+                _containerStale = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private IEnumerable<OpportunityListItem> CardsOf(ColumnView column) => _cards.Where(c => c.StageId == column.Stage.Id);
+
+    private string ShowMoreHref(ColumnView column) =>
+        QueryHelpers.AddQueryString(
+            OpportunityFilters.SwitchTo("opportunities", Navigation.Uri), "stage", column.Stage.Id.ToString());
+
+    private void ToggleColumn(int stageId)
+    {
+        if (!_expanded.Remove(stageId))
+        {
+            _expanded.Add(stageId);
+        }
+
+        Refresh();
+    }
+
+    private void OnSwipe(SwipeEventArgs args)
+    {
+        // Swipe left shows the next stage, swipe right the previous one.
+        var next = args.SwipeDirection switch
+        {
+            SwipeDirection.RightToLeft => _activeTab + 1,
+            SwipeDirection.LeftToRight => _activeTab - 1,
+            _ => _activeTab,
+        };
+        _activeTab = Math.Clamp(next, 0, Math.Max(0, _columns.Count - 1));
+    }
+
+    // ---- Moving a card (drag on desktop, dropdown on phones) ----
+
+    private Task OnItemDropped(MudItemDropInfo<OpportunityListItem> drop)
+    {
+        if (_stages.FirstOrDefault(s => s.Id.ToString() == drop.DropzoneIdentifier) is { } target)
+        {
+            // The drop container repaints only when this handler returns, so the save must not be awaited here:
+            // MoveCardAsync moves the card in our list straight away (before its first await) and finishes in the
+            // background. It handles its own errors, so the discarded task cannot fault.
+            _ = MoveCardAsync(drop.Item!, target);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task MoveCardAsync(OpportunityListItem card, StageOption target)
+    {
+        if (card.StageId == target.Id || _busy.Contains(card.Id) || _user is null)
+        {
+            return;
+        }
+
+        var from = _stages.First(s => s.Id == card.StageId);
+        var moved = card with { StageId = target.Id, StageName = target.Name, IsWon = target.IsWon, IsLost = target.IsLost };
+
+        // Optimistic: the card is in its new column at once.
+        _busy.Add(card.Id);
+        Replace(card, moved);
+        AdjustColumns(card, from.Id, target.Id);
+        Refresh();
+
+        var current = moved;
+        try
+        {
+            var outcome = await _mover.MoveAsync(card.Id, card.RowVersion, !from.IsOpen, target, _user);
+            if (outcome.Moved)
+            {
+                // Take what the rules decided (probability, close date, new row version).
+                var result = outcome.Result!.Moved!;
+                current = moved with { Probability = result.Probability, CloseDate = result.CloseDate, RowVersion = result.RowVersion };
+                Replace(moved, current);
+                return;
+            }
+
+            // Cancelled, refused or conflicting: snap back.
+            Replace(moved, card);
+            AdjustColumns(card, target.Id, from.Id);
+            current = card;
+
+            // Someone else changed it: our row versions are stale, so show the board as it is now.
+            if (outcome.Result?.Status is MoveStageStatus.Conflict or MoveStageStatus.NotFound)
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Moving opportunity {Id} to stage {Stage} failed.", card.Id, target.Id);
+            Replace(current, card);
+            AdjustColumns(card, target.Id, from.Id);
+            Snackbar.Add("Could not change the stage. The card is back where it was.", Severity.Error);
+        }
+        finally
+        {
+            _busy.Remove(card.Id);
+            Refresh();
+        }
+    }
+
+    private void Replace(OpportunityListItem old, OpportunityListItem updated)
+    {
+        var order = _columns.Select((c, i) => (c.Stage.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        var list = _cards.Where(c => c.Id != old.Id).Append(updated);
+
+        // Keep the columns' own order: open stages by close date, Won and Lost latest first.
+        _cards =
+        [
+            .. list
+                .OrderBy(c => order.GetValueOrDefault(c.StageId))
+                .ThenBy(c => c.IsOpen ? c.CloseDate.DayNumber : -c.CloseDate.DayNumber)
+                .ThenBy(c => c.Id),
+        ];
+    }
+
+    private void AdjustColumns(OpportunityListItem card, int fromStageId, int toStageId)
+    {
+        if (_columns.FirstOrDefault(c => c.Stage.Id == fromStageId) is { } from)
+        {
+            from.Count--;
+            from.Total -= card.Amount;
+        }
+
+        if (_columns.FirstOrDefault(c => c.Stage.Id == toStageId) is { } to)
+        {
+            to.Count++;
+            to.Total += card.Amount;
+        }
+    }
+
+    // The drop container shows each card in the zone its selector picks. It must be told to look again AFTER this page
+    // has rendered with the new card list (until then it still holds the old list), so the refresh waits for
+    // OnAfterRender.
+    private bool _containerStale;
+
+    private void Refresh()
+    {
+        _containerStale = true;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (_containerStale && _container is not null)
+        {
+            _containerStale = false;
+            _container.Refresh();
+        }
+    }
+
+    // ---- Filters (every change is a navigation, so the URL always matches the screen) ----
+
+    private void NavigateTo(ListState next, bool replace = false) =>
+        Navigation.NavigateTo(
+            Navigation.GetUriWithQueryParameters(next.ToQueryParameters(_defaultScope, OpportunityFilters.BoardKeys)),
+            new NavigationOptions { ReplaceHistoryEntry = replace });
+
+    private Task SetScopeAsync(ListScope scope)
+    {
+        NavigateTo(_state.Clone().With(s => s.Scope = scope));
+        return Task.CompletedTask;
+    }
+
+    private Task OnSearchChanged(string? text)
+    {
+        NavigateTo(_state.Clone().With(s => s.Search = text), replace: true);
+        return Task.CompletedTask;
+    }
+
+    private Task SetFilterAsync(string key, string? value)
+    {
+        NavigateTo(_state.Clone().With(s => s.SetFilter(key, value)));
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        NavigateTo(_state.Clone().With(s =>
+        {
+            s.Search = null;
+            s.Filters.Clear();
+        }));
+        return Task.CompletedTask;
+    }
+
+    private static string ScopeLabel(ListScope scope) => scope switch
+    {
+        ListScope.Mine => "Mine",
+        ListScope.Team => "My team",
+        _ => "All I can see",
+    };
+
+    public override async ValueTask DisposeAsync()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        _cts?.Cancel();
+        await base.DisposeAsync();
+    }
+}
