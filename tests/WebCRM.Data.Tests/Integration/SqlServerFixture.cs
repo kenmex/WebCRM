@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using WebCRM.Core.Entities;
 using WebCRM.Core.Interfaces;
@@ -101,6 +102,23 @@ public sealed class SqlServerFixture : IAsyncLifetime
     public CrmDbContext CreateContext() => Factory.CreateDbContext();
 
     public IDbContextFactory<CrmDbContext> CreateFactory() => Factory;
+
+    /// <summary>
+    /// A factory for the same database with extra interceptors, e.g. one that fails a chosen SQL command to prove a
+    /// transaction rolls back. The audit interceptor is added the same way as in <see cref="CreateFactory()"/>.
+    /// </summary>
+    public IDbContextFactory<CrmDbContext> CreateFactory(params IInterceptor[] extraInterceptors) =>
+        new InterceptedFactory(ConnectionString, CurrentUser, extraInterceptors);
+
+    private sealed class InterceptedFactory(
+        string connectionString, ICurrentUser currentUser, IInterceptor[] extraInterceptors) : IDbContextFactory<CrmDbContext>
+    {
+        public CrmDbContext CreateDbContext() => new(new DbContextOptionsBuilder<CrmDbContext>()
+            .UseSqlServer(connectionString)
+            .AddInterceptors(new AuditFieldsInterceptor(currentUser, TimeProvider.System))
+            .AddInterceptors(extraInterceptors)
+            .Options);
+    }
 
     private IDbContextFactory<CrmDbContext> Factory =>
         _services!.CreateScope().ServiceProvider.GetRequiredService<IDbContextFactory<CrmDbContext>>();
