@@ -1,0 +1,186 @@
+@using WebCRM.Core.Personal
+@using WebCRM.Core.Search
+@using WebCRM.Core.Users
+@inject ISearchService Search
+@inject IFavouriteService Favourites
+@inject IRecentViewService RecentViews
+@inject IUserContextProvider UserContexts
+@inject NavigationManager Navigation
+@inject ILogger<CommandPalette> Logger
+
+@* Ctrl+K (docs/page-spec.md, App shell): jump to a record, a page or an action. Empty, it offers the actions, your
+   favourites and recently viewed records; typing searches records and filters the actions. Enter opens the top
+   result, or the one picked with the arrow keys. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="1">
+            <MudTextField T="string" Value="@_text" ValueChanged="OnTextChangedAsync" Immediate="true" DebounceInterval="150"
+                          Placeholder="Search records, or type a command" aria-label="Command palette" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          AutoFocus="true" OnKeyDown="OnKeyDownAsync" />
+
+            <div role="listbox" aria-label="Results" data-palette-results="true" style="max-height: 55vh; overflow-y: auto;">
+                @if (_error is not null)
+                {
+                    <MudText Color="Color.Error" Class="pa-2">@_error</MudText>
+                }
+
+                @if (_loading && _items.Count == 0)
+                {
+                    <MudText Color="Color.Secondary" Class="pa-2">Searching...</MudText>
+                }
+                else if (_items.Count == 0 && !_loading)
+                {
+                    <MudText Color="Color.Secondary" Class="pa-2" role="status">Nothing found.</MudText>
+                }
+
+                @for (var i = 0; i < _items.Count; i++)
+                {
+                    var index = i;
+                    var item = _items[i];
+                    @if (i == 0 || _items[i - 1].Group != item.Group)
+                    {
+                        <MudText Typo="Typo.overline" Class="px-2 pt-2" Color="Color.Secondary">@item.Group</MudText>
+                    }
+
+                    <div role="option" aria-selected="@(index == _active ? "true" : "false")" data-palette-item="@item.Href"
+                         class="@("mud-list-item mud-list-item-clickable px-2 py-1" + (index == _active ? " mud-selected-item" : ""))"
+                         style="cursor: pointer;" @onclick="() => Open(item)">
+                        <MudIcon Icon="@item.Icon" Size="Size.Small" Class="mr-3" />
+                        <div>
+                            <MudText Typo="Typo.body2">@item.Title</MudText>
+                            @if (item.Subtitle is not null)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@item.Subtitle</MudText>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </MudStack>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private CancellationTokenSource? _cts;
+    private IReadOnlyList<PaletteItem> _items = [];
+    private string _text = string.Empty;
+    private string? _error;
+    private int _active;
+    private bool _loading;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private Task OnTextChangedAsync(string? text)
+    {
+        _text = text ?? string.Empty;
+        return RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        _error = null;
+        _loading = true;
+        var items = new List<PaletteItem>();
+
+        try
+        {
+            var user = await UserContexts.GetAsync(cts.Token);
+            if (SearchRules.Normalize(_text) is { } term)
+            {
+                if (user is not null)
+                {
+                    var results = await Search.SearchAsync(term, 5, user, cts.Token);
+                    items.AddRange(results.Groups.SelectMany(g => g.Hits).Select(h => ToItem(h, SearchLinks.Label(h.Type))));
+                }
+
+                items.AddRange(PaletteCatalog.Match(_text));
+            }
+            else
+            {
+                items.AddRange(PaletteCatalog.Match(_text));
+                if (user is not null && string.IsNullOrWhiteSpace(_text))
+                {
+                    items.AddRange(await TryListAsync(() => Favourites.ListAsync(user, 10, cts.Token), "Favourites"));
+                    items.AddRange(await TryListAsync(() => RecentViews.ListAsync(user, 10, cts.Token), "Recently viewed"));
+                }
+            }
+
+            if (!cts.IsCancellationRequested)
+            {
+                _items = items;
+                _active = 0;
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "The command palette search failed.");
+            if (!cts.IsCancellationRequested)
+            {
+                // The commands still work without the search.
+                _error = "Search failed. Commands are still available.";
+                _items = PaletteCatalog.Match(_text);
+                _active = 0;
+            }
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _loading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<PaletteItem>> TryListAsync(Func<Task<IReadOnlyList<SearchHit>>> list, string group)
+    {
+        try
+        {
+            return (await list()).Select(h => ToItem(h, group));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not load {Group} for the command palette.", group);
+            return [];
+        }
+    }
+
+    private static PaletteItem ToItem(SearchHit hit, string group) =>
+        new(group, hit.Title, hit.Subtitle, SearchLinks.Icon(hit.Type), SearchLinks.Record(hit));
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when _items.Count > 0:
+                _active = (_active + 1) % _items.Count;
+                break;
+
+            case "ArrowUp" when _items.Count > 0:
+                _active = _active <= 0 ? _items.Count - 1 : _active - 1;
+                break;
+
+            case "Enter" when _items.Count > 0:
+                Open(_items[Math.Clamp(_active, 0, _items.Count - 1)]);
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void Open(PaletteItem item)
+    {
+        MudDialog.Close(DialogResult.Ok(item.Href));
+        Navigation.NavigateTo(item.Href);
+    }
+}

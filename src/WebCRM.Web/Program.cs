@@ -58,6 +58,8 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 // Data services (accounts, lookups, owners) and the signed-in user's role and team.
 builder.Services.AddCrmServices();
 builder.Services.AddScoped<IUserContextProvider, UserContextProvider>();
+builder.Services.AddScoped<IBrowserFocus, BrowserFocus>();
+builder.Services.AddScoped<ShortcutRegistry>();
 
 builder.Services.AddIdentityCore<User>(options =>
     {

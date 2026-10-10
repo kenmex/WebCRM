@@ -1,5 +1,8 @@
 @inherits LayoutComponentBase
 
+@* One wrapper around the whole app: the keyboard shortcuts listen on it (see KeyboardShortcuts). *@
+<div id="crm-shell">
+
 <MudThemeProvider @ref="_themeProvider" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
@@ -12,6 +15,7 @@
         <MudText Typo="Typo.h6" Class="ml-2">WebCRM</MudText>
         <AuthorizeView>
             <Authorized>
+                <KeyboardShortcuts />
                 <GlobalSearch />
             </Authorized>
         </AuthorizeView>
@@ -37,6 +41,8 @@
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

@@ -5,8 +5,10 @@
 @using MudBlazor.Services
 @using Microsoft.AspNetCore.WebUtilities
 @using WebCRM.Core.Personal
+@using WebCRM.Web.Services
 @using WebCRM.Core.Querying
 @inject NavigationManager Navigation
+@inject ShortcutRegistry Shortcuts
 @inject ILogger<CrmListPage<TDto>> Logger
 
 @* The list pattern (docs/page-spec.md, "List page"): scope chips, quick filter, typed filters, grid on
@@ -143,6 +145,7 @@
 </MudStack>
 
 @code {
+    private IDisposable? _newShortcut;
     private CancellationTokenSource? _cts;
     private IReadOnlyList<TDto> _items = [];
     private int _total;
@@ -203,6 +206,14 @@
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        // N opens the New form, like the New button.
+        _newShortcut = Shortcuts.Register(Shortcut.New, () => InvokeAsync(() =>
+        {
+            if (NewHref is not null)
+            {
+                Navigation.NavigateTo(NewHref);
+            }
+        }));
     }
 
     protected override void OnParametersSet()
@@ -387,6 +398,7 @@
 
     public override async ValueTask DisposeAsync()
     {
+        _newShortcut?.Dispose();
         Navigation.LocationChanged -= OnLocationChanged;
         _cts?.Cancel();
         _cts?.Dispose();

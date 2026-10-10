@@ -1,0 +1,122 @@
+@implements IAsyncDisposable
+@using MudBlazor.Services
+@using WebCRM.Web.Services
+@inject IKeyInterceptorService KeyInterceptor
+@inject ShortcutRegistry Shortcuts
+@inject IDialogService Dialogs
+@inject ILogger<KeyboardShortcuts> Logger
+
+@* Listens for the app's keyboard shortcuts (docs/page-spec.md, "Keyboard first") through MudBlazor's key interceptor,
+   attached to the element that wraps the whole app, and hands each key to the ShortcutRegistry. Owns Ctrl+K itself.
+   Renders nothing.
+
+   Blazor lifecycle note: the interceptor needs the element to exist in the browser, so it is attached in
+   OnAfterRenderAsync (first render), never in OnInitialized. *@
+
+@code {
+    private const string PreventBrowser = "key+ctrl|key+meta";
+
+    private IDisposable? _paletteShortcut;
+    private bool _subscribed;
+    private bool _paletteOpen;
+
+    /// <summary>The id of the element that contains the whole app; key presses anywhere inside it are seen.</summary>
+    [Parameter] public string ElementId { get; set; } = "crm-shell";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _paletteShortcut = Shortcuts.Register(Shortcut.Palette, OpenPaletteAsync);
+
+        try
+        {
+            // Latin letters plus the same physical keys on a Greek layout. Ctrl+K and Ctrl+S also suppress what the
+            // browser would do with them (focus its search bar, open "Save page as").
+            var options = new KeyInterceptorOptions(null, Keys(["k", "κ", "s", "σ", "ς"], PreventBrowser)
+                .Concat(Keys(["e", "ε", "n", "ν", "/"], "none")).ToArray());
+            await KeyInterceptor.SubscribeAsync(ElementId, options, OnKeyDownAsync, _ => Task.CompletedTask);
+            _subscribed = true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // No shortcuts is not a reason to break the app (circuit trouble, blocked script).
+            Logger.LogWarning(ex, "Could not attach the keyboard shortcuts.");
+        }
+    }
+
+    private static IEnumerable<KeyOptions> Keys(IEnumerable<string> keys, string preventDown) =>
+        keys.Select(key => new KeyOptions { Key = key, SubscribeDown = true, PreventDown = preventDown, IgnoreDownRepeats = true });
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        try
+        {
+            await Shortcuts.HandleKeyAsync(e);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "A keyboard shortcut failed.");
+        }
+    }
+
+    private async Task OpenPaletteAsync()
+    {
+        if (_paletteOpen)
+        {
+            return;
+        }
+
+        _paletteOpen = true;
+        try
+        {
+            var options = new DialogOptions
+            {
+                Position = DialogPosition.TopCenter,
+                FullWidth = true,
+                MaxWidth = MaxWidth.Small,
+                NoHeader = true,
+                CloseOnEscapeKey = true,
+                BackdropClick = true,
+            };
+            var dialog = await Dialogs.ShowAsync<CommandPalette>(string.Empty, options);
+            _ = ResetWhenClosedAsync(dialog);
+        }
+        catch
+        {
+            _paletteOpen = false;
+            throw;
+        }
+    }
+
+    private async Task ResetWhenClosedAsync(IDialogReference dialog)
+    {
+        try
+        {
+            await dialog.Result;
+        }
+        finally
+        {
+            _paletteOpen = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _paletteShortcut?.Dispose();
+        if (_subscribed)
+        {
+            try
+            {
+                await KeyInterceptor.UnsubscribeAsync(ElementId);
+            }
+            catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException or InvalidOperationException)
+            {
+                // The circuit is already gone.
+            }
+        }
+    }
+}

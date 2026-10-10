@@ -135,3 +135,19 @@ public sealed class FakeSavedViewService : ISavedViewService
         return Task.FromResult(true);
     }
 }
+
+/// <summary>Stands in for the browser's focus: tests say whether the user is typing in a field or has a dialog open.</summary>
+public sealed class FakeBrowserFocus : WebCRM.Web.Services.IBrowserFocus
+{
+    public bool Typing { get; set; }
+
+    public int Blurs { get; private set; }
+
+    public Task<bool> IsTypingOrInDialogAsync() => Task.FromResult(Typing);
+
+    public Task BlurActiveElementAsync()
+    {
+        Blurs++;
+        return Task.CompletedTask;
+    }
+}

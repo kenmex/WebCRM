@@ -1,5 +1,7 @@
 @implements IDisposable
+@using WebCRM.Web.Services
 @inject IDialogService Dialogs
+@inject ShortcutRegistry Shortcuts
 
 @* The header card of a detail page (docs/page-spec.md, "Detail page"). Read mode by default; Edit switches the
    card into an EditForm in place. The page owns the model, the EditContext and saving; this component owns the
@@ -101,8 +103,38 @@
     /// <summary>Raised when the user confirmed leaving edit mode (the page discards its edit model).</summary>
     [Parameter] public EventCallback OnCancel { get; set; }
 
+    // E edits and Ctrl+S saves, but only while the header can do that right now.
+    private IDisposable? _editShortcut;
+    private IDisposable? _saveShortcut;
+
+    private void SyncShortcuts()
+    {
+        var canEdit = !IsEditing && CanEdit && OnEdit.HasDelegate;
+        if (canEdit && _editShortcut is null)
+        {
+            _editShortcut = Shortcuts.Register(Shortcut.Edit, () => InvokeAsync(() => OnEdit.InvokeAsync()));
+        }
+        else if (!canEdit)
+        {
+            _editShortcut?.Dispose();
+            _editShortcut = null;
+        }
+
+        var canSave = IsEditing && EditContext is not null;
+        if (canSave && _saveShortcut is null)
+        {
+            _saveShortcut = Shortcuts.Register(Shortcut.Save, () => InvokeAsync(SubmitAsync));
+        }
+        else if (!canSave)
+        {
+            _saveShortcut?.Dispose();
+            _saveShortcut = null;
+        }
+    }
+
     protected override void OnParametersSet()
     {
+        SyncShortcuts();
         if (!ReferenceEquals(_subscribedTo, EditContext))
         {
             if (_subscribedTo is not null)
@@ -178,6 +210,8 @@
 
     public void Dispose()
     {
+        _editShortcut?.Dispose();
+        _saveShortcut?.Dispose();
         if (_subscribedTo is not null)
         {
             _subscribedTo.OnFieldChanged -= OnFieldChanged;

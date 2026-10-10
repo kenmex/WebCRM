@@ -16,6 +16,8 @@ public abstract class MudTestContext : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddMudServices();
         Services.AddSingleton<IBrowserViewportService>(Viewport);
+        Services.AddSingleton<WebCRM.Web.Services.IBrowserFocus>(BrowserFocusFake);
+        Services.AddSingleton<WebCRM.Web.Services.ShortcutRegistry>();
 
     }
 
@@ -48,6 +50,9 @@ public abstract class MudTestContext : BunitContext
 
     /// <summary>Stands in for the browser: tests choose the breakpoint the list component sees.</summary>
     protected FakeViewport Viewport { get; } = new();
+
+    /// <summary>Where the focus is, as far as the keyboard shortcuts can tell.</summary>
+    protected FakeBrowserFocus BrowserFocusFake { get; } = new();
 }
 
 public sealed class FakeViewport : IBrowserViewportService, IAsyncDisposable
