@@ -245,6 +245,7 @@ public class SearchServiceSqlServerTests : IClassFixture<SqlServerFixture>
     // ---- Volume: P7 asks for under a second ----
 
     [Fact]
+    [Trait("Category", "Performance")]
     public async Task Searching_20000_accounts_and_20000_contacts_takes_well_under_a_second_once_warm()
     {
         await EnsureReferenceDataAsync();

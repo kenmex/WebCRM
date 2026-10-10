@@ -10,6 +10,17 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
+  <!-- Tests tagged [Trait("Category", "Performance")] assert on elapsed time, so they depend on the machine and
+       its load. They are left out of the normal run (local and CI) and run on demand:
+         dotnet test (project tests/WebCRM.Data.Tests) with the property RunPerformance=true
+       (docs/testing.md) -->
+  <PropertyGroup Condition="'$(RunPerformance)' == 'true'">
+    <TestingPlatformCommandLineArguments>--filter-trait "Category=Performance"</TestingPlatformCommandLineArguments>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunPerformance)' != 'true'">
+    <TestingPlatformCommandLineArguments>--filter-not-trait "Category=Performance"</TestingPlatformCommandLineArguments>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
     <PackageReference Include="Shouldly" Version="4.3.0" />

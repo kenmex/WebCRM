@@ -382,6 +382,7 @@ public class DemoDataGeneratorTests
     // ---- Full size ----
 
     [Fact]
+    [Trait("Category", "Performance")]
     public void The_full_default_volume_generates_quickly_and_keeps_every_rule()
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
