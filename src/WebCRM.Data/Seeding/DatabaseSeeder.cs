@@ -104,6 +104,10 @@ public static class DatabaseSeeder
 
     private static readonly string[] SalutationNames = ["Mr", "Ms", "Dr"];
 
+    // The first five come from the CoreSchema migration; only the missing ones are added.
+    private static readonly string[] LeadSourceNames =
+        ["Website", "Referral", "Trade show", "Partner", "Cold call", "Email campaign", "Social media", "Other"];
+
     private static readonly string[] IndustryNames =
     [
         "Construction", "Education", "Energy", "Finance", "Healthcare", "Hospitality", "Manufacturing",
@@ -114,7 +118,8 @@ public static class DatabaseSeeder
     {
         var added = await AddMissingAsync(db.AccountStatuses, AccountStatusNames, ct)
             + await AddMissingAsync(db.Industries, IndustryNames, ct)
-            + await AddMissingAsync(db.Salutations, SalutationNames, ct);
+            + await AddMissingAsync(db.Salutations, SalutationNames, ct)
+            + await AddMissingAsync(db.LeadSources, LeadSourceNames, ct);
         if (added > 0)
         {
             await db.SaveChangesAsync(ct);

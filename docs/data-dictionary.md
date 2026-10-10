@@ -69,7 +69,7 @@ Every MVP table and column, as EF Core will create it in SQL Server. Phase 2 ent
 | --- | --- | --- | --- | --- |
 | Name | nvarchar(200) AI | no |  | Person's name |
 | Company | nvarchar(200) AI | yes |  | Pre-fills the account on Convert |
-| Email | nvarchar(254) AI | yes |  | Valid format |
+| Email | nvarchar(254) AI | yes |  | Same rule as Contact.Email: stored trimmed and lower case, one `@`, a domain with a dot, no spaces. Its domain is used to suggest accounts on Convert |
 | Phone | nvarchar(30) | yes |  |  |
 | LeadSourceId | int | yes |  | FK LeadSource |
 | LeadStatusId | int | no | New | FK LeadStatus; Converted only via Convert |
@@ -170,7 +170,7 @@ Index: (OwnerId, DoneAt, DueAt) for My tasks and overdue counts.
 | Name | nvarchar(100) | no |  | Unique among active teams |
 | ManagerId | nvarchar(450) | yes |  | FK user with role Manager |
 
-**Lookups**: Industry, LeadSource, LeadStatus, ActivityType, AccountStatus, LostReason, Salutation (Stage is above). Salutation is seeded with Mr, Ms, Dr by the start-up seeder
+**Lookups**: Industry, LeadSource, LeadStatus, ActivityType, AccountStatus, LostReason, Salutation (Stage is above). Salutation is seeded with Mr, Ms, Dr by the start-up seeder; the start-up seeder also adds the missing LeadSource values (Email campaign, Social media, Other); LeadStatus and Stage come from the CoreSchema migration
 
 | Column | Type | Null | Default | Rules |
 | --- | --- | --- | --- | --- |
@@ -226,7 +226,7 @@ Index: (UserId, ReadAt, CreatedAt). A nightly job deletes read notifications old
 | --- | --- | --- | --- | --- |
 | UserId | nvarchar(450) | no |  |  |
 | EntityName | nvarchar(50) | no |  |  |
-| EntityId | int | no |  | Unique (UserId, EntityName, EntityId). EntityName is `Account` or `Contact` for now (`Opportunity` and `Lead` follow with those pages). Rows for records that were deleted or are no longer visible are skipped when listed and removed then |
+| EntityId | int | no |  | Unique (UserId, EntityName, EntityId). EntityName is `Account`, `Contact` or `Lead` for now (`Opportunity` follows with its pages). Rows for records that were deleted or are no longer visible are skipped when listed and removed then |
 | CreatedAt / ViewedAt | datetime2(0) | no | sysutcdatetime() | RecentView keeps the last 50 per user, upserted on view; a view of the same record within a minute of the last one does not write again. Favourites have no cap; both are listed newest first, 10 at a time in the search dropdown and the command palette |
 
 **ApiToken**
